@@ -3,7 +3,6 @@
 # 数据来源：Wind数据库：中国A股交易日历AShareCalendar
 # 本函数取的是上交所交易日期
 
-import pymssql
 import pandas as pd
 from public.getWindData import get_wind_data
 from datetime import datetime
@@ -35,9 +34,9 @@ def get_trading_days2(dateFrom, dateTo, dateType):
     dateTo1 = datetime.strftime(dateTo1, '%Y%m%d')
 
     dateType = dateType.lower()
-    if dateType not in ('"week", "month", "quarter", "year"'):
+    if dateType not in ('"week", "month", "quarter", "halfyear", "year"'):
         raise ValueError('wrong marktype, must be('
-                         '"week", "month", "quarter", "year")')
+                         '"week", "month", "quarter", "halfyear", "year")')
 
     exeStr = 'select TRADE_DAYS from dbo.ASHARECALENDAR where ' \
              'S_INFO_EXCHMARKET = \'SSE\' and TRADE_DAYS >= %s and TRADE_DAYS <= %s' % (dateFrom1, dateTo1)
@@ -47,12 +46,16 @@ def get_trading_days2(dateFrom, dateTo, dateType):
     tradingDays.sort_values('Date', inplace=True)
     tradingDays.reset_index(drop=True, inplace=True)
 
+    # @2020.04.02貌似可以用x.is_year_end, x.is_quarter_end, x.is_month_end解决3个
     # 添加周末、月末、季末、年末标签
     # Week_Label需要做一个特殊处理，如果是1月份的Week标签是52，则年份需-1，12月份的Week标签是1，则年份需+1
     tradingDays['Year_Num'] = [x.year for x in tradingDays['Date']]
     tradingDays['Quarter_Num'] = [x.quarter for x in tradingDays['Date']]
     tradingDays['Month_Num'] = [x.month for x in tradingDays['Date']]
     tradingDays['Week_Num'] = [x.week for x in tradingDays['Date']]
+    tradingDays.loc[tradingDays['Quarter_Num'] <= 2, 'Halfyear_Num'] = 1
+    tradingDays.loc[tradingDays['Quarter_Num'] >= 3, 'Halfyear_Num'] = 2
+    tradingDays['Halfyear_Num'] = tradingDays['Halfyear_Num'].astype(int)
 
     # 这里不用for 循环应该怎么调整：
     for i in range(len(tradingDays)):
@@ -70,15 +73,18 @@ def get_trading_days2(dateFrom, dateTo, dateType):
     tradingDays['Month_Label'] = [x.year * 100 + x.month for x in tradingDays['Date']]
     tradingDays['Quarter_Label'] = [x.year * 100 + x.quarter for x in tradingDays['Date']]
     tradingDays['Year_Label'] = [x.year for x in tradingDays['Date']]
+    tradingDays['Halfyear_Label'] = [x.year * 100 for x in tradingDays['Date']] + tradingDays['Halfyear_Num']
 
 
     weekEnd = tradingDays.groupby('Week_Label')['Date'].last()
     monthEnd = tradingDays.groupby('Month_Label')['Date'].last()
     quarterEnd = tradingDays.groupby('Quarter_Label')['Date'].last()
+    halfyearEnd = tradingDays.groupby('Halfyear_Label')['Date'].last()
     yearEnd = tradingDays.groupby('Year_Label')['Date'].last()
     tradingDays.loc[:, 'If_Week_End'] = [x in weekEnd.values for x in tradingDays['Date'].values]
     tradingDays.loc[:, 'If_Month_End'] = [x in monthEnd.values for x in tradingDays['Date'].values]
     tradingDays.loc[:, 'If_Quarter_End'] = [x in quarterEnd.values for x in tradingDays['Date'].values]
+    tradingDays.loc[:, 'If_Halfyear_End'] = [x in halfyearEnd.values for x in tradingDays['Date'].values]
     tradingDays.loc[:, 'If_Year_End'] = [x in yearEnd.values for x in tradingDays['Date'].values]
 
     # 筛选需要的标签
@@ -87,6 +93,7 @@ def get_trading_days2(dateFrom, dateTo, dateType):
             'week': tradingDays[['Date', 'Week_Label', 'If_Week_End']],
             'month': tradingDays[['Date', 'Month_Label', 'If_Month_End']],
             'quarter': tradingDays[['Date', 'Quarter_Label', 'If_Quarter_End']],
+            'halfyear': tradingDays[['Date', 'Halfyear_Label', 'If_Halfyear_End']],
             'year': tradingDays[['Date', 'Year_Label', 'If_Year_End']]
         }
         return switcher.get(dateType, "Invalid day of week")

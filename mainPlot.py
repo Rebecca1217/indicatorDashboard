@@ -114,28 +114,24 @@ pie_plot(pieData, '两市融资融券余额占比')
 # fig, ax = plt.subplots()
 tdAmountSH = pd.read_hdf('dataForPlot/tdAmountSH.hdf')
 tdAmountSH.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountSH.index.get_level_values('Date')]
-tdAmountSH = tdAmountSH.droplevel('Index_Code')
 tdAmountSH.plot.bar(color='#e74c3c')
 plt.title('上证综指近20交易日成交量（亿）')
 plt.show()
 
 tdAmount300 = pd.read_hdf('dataForPlot/tdAmoun300.hdf')
 tdAmount300.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount300.index.get_level_values('Date')]
-tdAmount300 = tdAmount300.droplevel('Index_Code')
 tdAmount300.plot.bar(color='#e74c3c')
 plt.title('沪深300近20交易日成交量（亿）')
 plt.show()
 
 tdAmount500 = pd.read_hdf('dataForPlot/tdAmount500.hdf')
 tdAmount500.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount500.index.get_level_values('Date')]
-tdAmount500 = tdAmount500.droplevel('Index_Code')
 tdAmount500.plot.bar(color='#e74c3c')
 plt.title('中证500近20交易日成交量（亿）')
 plt.show()
 
 tdAmountGEM = pd.read_hdf('dataForPlot/tdAmountGEM.hdf')
 tdAmountGEM.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountGEM.index.get_level_values('Date')]
-tdAmountGEM = tdAmountGEM.droplevel('Index_Code')
 tdAmountGEM.plot.bar(color='#e74c3c')
 plt.title('创业板指近20交易日成交量（亿）')
 plt.show()
@@ -150,3 +146,5 @@ plt.show()
 # plt.xlabel(' ')
 # plt.show()
 
+
+#  基金仓位表格
