@@ -3,10 +3,13 @@
 # @created @2020.03.30
 
 import pandas as pd
+import numpy as np
 from public.getWindData import get_wind_data
 from public.getIndexPos import get_index_pos
 from public.getTradingDays import get_trading_days, get_trading_days2
 from public.getStockFundPos import get_stock_fund_pos
+from public.getSWComponent import get_component_SW
+from public.basicInfoSW import basic_info_SW
 import datetime
 
 
@@ -98,6 +101,7 @@ tdAmountGEM.to_hdf('dataForPlot/tdAmountGEM.hdf', key='tdAmountGEM', type='w')
 # 选取股票型和偏股混合型基金
 # 问题：同一只基金的场内和场外是否需要只保留一个？
 # 日期序列就是年中和年末
+# @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里需要修改一下
 dateFrom = '20100101'
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
 dateSeq = get_trading_days(dateFrom, dateTo)
@@ -107,16 +111,136 @@ fundUniv = get_stock_fund_pos(dateFrom, dateTo)   # 普通股票型+混合偏股
 dateSeq = get_trading_days2(dateFrom, dateTo, 'halfyear')
 dateSeq = dateSeq[dateSeq['If_Halfyear_End']]
 # 筛选年中和年末的基金universe  fundUnivHalfYear
-fundUnivHY = fundUniv[[x in dateSeq.index for x in fundUniv['Date']]]
+fundUnivHY = fundUniv[[x in dateSeq.index for x in fundUniv['Date']]].copy()
+fundUnivHY.reset_index(drop=True, inplace=True)
 # 获取基金的仓位数据，join到univ上求均值即可
-sqlStr = 'select S_INFO_WINDCODE, F_PRT_ENDDATE, F_PRT_STOCKTONAV from ' \
+sqlStr = 'select S_INFO_WINDCODE, F_PRT_ENDDATE, F_PRT_STOCKTONAV, F_PRT_NETASSET, F_PRT_STOCKVALUE from ' \
          'ChinaMutualFundAssetPortfolio where F_PRT_ENDDATE >= {0} and F_PRT_ENDDATE <= {1}'.format(dateFrom, dateTo)
 fundPosition = get_wind_data(sqlStr)
-fundPosition = pd.DataFrame(fundPosition, columns=['Fund_Code', 'Date', 'Stock_Pos'])
+fundPosition = pd.DataFrame(fundPosition, columns=['Fund_Code', 'Date', 'Stock_Pos', 'Fund_Value', 'Stk_Value'])
 fundPosition['Date'] = pd.to_datetime(fundPosition['Date'])
 fundPosition['Stock_Pos'] = fundPosition['Stock_Pos'].astype(float)
+
 # Note: fundPosition的日期是报告日期，都是0630这种的，遇到0630不是交易日的就匹配不上 pd.merge_asof只能根据一个key，需要先split,比较麻烦
-tmp = fundUnivHY.merge(fundPosition, how='left', on=['Date', 'Fund_Code'])
+# 按月份匹配，如果有多于1条的数据，则取日期最新的
+fundPosition['Month_Label'] = [x.year * 100 + x.month for x in fundPosition['Date']]
+fundUnivHY['Month_Label'] = [x.year * 100 + x.month for x in fundUnivHY['Date']]
+fundPosition.drop_duplicates(['Fund_Code', 'Month_Label'], keep='last', inplace=True)
+fundPosUniv = fundUnivHY.merge(fundPosition, how='left', on=['Month_Label', 'Fund_Code'], validate='one_to_one')
+#  去掉仓位低于40%的，这种一般是在建仓期
+fundPosUniv = fundPosUniv[(fundPosUniv['Stock_Pos'] >= 40) | (np.isnan(fundPosUniv['Stock_Pos']))].copy()
+fundPosUniv.sort_values(['Date_x', 'Fund_Code'], inplace=True)
+fundPosTotal = fundPosUniv.groupby('Date_x')['Stock_Pos'].mean()
+fundPosTotal.index.names = ['Date']  # 这个总数据没有日期问题，只要有数据的一定是全的，不会只是前10名仓位
+
+# 基金持仓的分行业仓位  季报公布的是证监会分类标准，所以这里用底仓自己计算
+# 分行业持仓，最新一期的有的基金公布年报，有的只公布的四季报，这种需要处理，处理时间？？？？？？？？？
+# 基金net asset要直接读，不能用行业仓位反除，四舍五入不准
+# 先筛选出股票型+偏股型基金的底仓，重复的只保留最新
+sqlStr = 'select c.S_INFO_WINDCODE, S_INFO_STOCKWINDCODE, c.F_PRT_ENDDATE, F_PRT_STKVALUE, F_PRT_STKVALUETONAV, ' \
+         'd.f_prt_netasset from ChinaMutualFundStockPortfolio c ' \
+         'left join ChinaMutualFundAssetPortfolio d ' \
+         'on c.S_INFO_WINDCODE = d.S_INFO_WINDCODE and c.F_PRT_ENDDATE = d.F_PRT_ENDDATE ' \
+         'where c.S_INFO_WINDCODE in (' \
+         'select  a.F_INFO_WINDCODE from ChinaMutualFundSector a ' \
+         'inner join AShareIndustriesCode b ' \
+         'on a.S_INFO_SECTOR=b.INDUSTRIESCODE ' \
+         'where a.S_INFO_SECTOR in (\'2001010201000000\', \'2001010101000000\')) and ' \
+         'month(c.f_prt_enddate) in (6, 12) ' \
+         'and c.F_PRT_ENDDATE >= {0} and c.F_PRT_ENDDATE <= {1}'.format(dateFrom, dateTo)
+fundPosDetail = get_wind_data(sqlStr)  # 这样筛出来的是整个过程中在股票型基金中出现过的基金，没有对应时间，需要再对应一次
+# 直接用一个sql语句不好写，因为entrydate exitdate一个基金对应多条数据，leftjoin 都给弄上了不好汇总
+# 这里面也有同一个报告期出现两次的，数据不一样，以最新日期为准，例如160512.SZ在20110623和20110630的两次只取20110630
+fundPosDetail = pd.DataFrame(fundPosDetail, columns=['Fund_Code', 'Stock_Code', 'Date', 'Stk_Values', 'Stk_Pct', 'Fund_Value'])
+fundPosDetail['Date'] = pd.to_datetime(fundPosDetail['Date'])
+fundPosDetail[['Stk_Values', 'Stk_Pct', 'Fund_Value']] = fundPosDetail[['Stk_Values', 'Stk_Pct', 'Fund_Value']].astype(float)
+# 摘出半年度的时间clear_version (不能直接fundPosDetail.drop_duplicates因为本来就有很多duplicates必须摘出时间序列再剔除)
+halfYearDate = pd.DataFrame(fundPosDetail['Date'].unique(), columns=['Date'])
+halfYearDate['Month_Label'] = [x.year * 100 + x.month for x in halfYearDate['Date']]
+halfYearDate.sort_values(['Date'], inplace=True)
+halfYearDate.drop_duplicates(['Month_Label'], keep='last', inplace=True)
+# tmp = fundPosDetail[[x in set(halfYearDate['Date']) for x in fundPosDetail['Date']]].copy() # 奇怪这个地方如果不加set就都是FALSE
+# https://stackoverflow.com/questions/48553824/checking-if-a-date-falls-in-a-dataframe-pandas
+# 不要这么筛选，太慢了。。。日期格式尤其慢。。
+halfYearDate['Valid'] = True
+fundPosDetail = fundPosDetail.merge(halfYearDate[['Date', 'Valid']], on = 'Date', how='left')
+fundPosDetail.loc[pd.isnull(fundPosDetail['Valid']), 'Valid'] = False
+fundPosDetail = fundPosDetail[fundPosDetail['Valid']].copy()
+fundPosDetail.reset_index(drop=True, inplace=True)
+fundPosDetail['Month_Label'] = [x.year * 100 + x.month for x in fundPosDetail['Date']]
+fundPosDetail = fundUnivHY.merge(fundPosDetail, how='left', on=['Month_Label', 'Fund_Code'], validate='one_to_many') # Date_x是交易日,Date_y是报告日
+fundPosDetail = fundPosDetail[['Date_x', 'Fund_Code', 'Stock_Code', 'Stk_Values', 'Fund_Value']]
+fundPosDetail.columns = ['Date', 'Fund_Code', 'Stock_Code', 'Stk_Values', 'Fund_Value']
+#   到目前为止，还没有剔除过程中才进来或者中途出去的基金，需要再match一步
+#  为了严谨做这一步，事实上这部分stockPortfolio表绝大部分也没数据，对结果应该没影响
+
+
+#  贴行业标签计算行业权重
+swComponent = get_component_SW(dateFrom, dateTo)
+fundPosDetail = fundPosDetail.merge(swComponent, how='left', on=['Date', 'Stock_Code'])
+uniqueNav = fundPosDetail.drop_duplicates(['Date', 'Fund_Code'], keep='first')
+totalNav = pd.DataFrame(uniqueNav.groupby('Date')['Fund_Value'].sum())  # 每天的基金总市值
+fundPosSector = pd.DataFrame(fundPosDetail.groupby(['Date', 'SW_Code'])['Stk_Values'].sum())   # 每天分行业的总市值
+fundPosSector['SW_Code'] = fundPosSector.index.get_level_values('SW_Code')
+fundPosSector = fundPosSector.merge(totalNav, how='left', on='Date')
+fundPosSector['SW_Pct'] = fundPosSector['Stk_Values'] / fundPosSector['Fund_Value']
+# 行业标签添加中文名称
+swPara = basic_info_SW()
+swPara['SW_Code'] = swPara['Wind_Code'] + '.SI'
+fundPosSector = fundPosSector.merge(swPara[['SW_Code', 'SW_Name']], how='left', on='SW_Code').set_index(fundPosSector.index)
+
+# 总仓位和各行业配置比例变动，输出表格结果
+currPeriod = fundPosSector.index.unique()[-1]
+lastPeriod = fundPosSector.index.unique()[-2]
+sectorPctTable = fundPosSector.pivot_table(index='SW_Name', columns=fundPosSector.index, values='SW_Pct', aggfunc='first')
+# 本期 、本期相对上期变化，最终只显示当前还在用的行业
+sectorPctTable = sectorPctTable.merge(swPara.loc[swPara['Used_Label'] == 1, ['SW_Name', 'Used_Label']], how='left', on='SW_Name')
+sectorPctTable.sort_values(['Used_Label', 'SW_Name'], ascending=False, inplace=True) # 把已经不用的行业放在最下面
+sectorPctTable.reset_index(drop=True, inplace=True)  # 历史仓位变化图
+
+sectorPctTableCurr = sectorPctTable[['SW_Name', lastPeriod, currPeriod]]
+# 把总仓位加在最上面一排一起计算
+totalPctCurr = pd.DataFrame(fundPosTotal).transpose()[[lastPeriod, currPeriod]] / 100
+totalPctCurr['SW_Name'] = '总仓位'
+totalPctCurr = totalPctCurr[['SW_Name', lastPeriod, currPeriod]]
+posTable = pd.concat([totalPctCurr, sectorPctTableCurr], axis=0).reset_index(drop=True)
+posTable['Delta'] = posTable[currPeriod] - posTable[lastPeriod]
+
+
+# # 核对计算明细后的仓位和直接读取的仓位差异在哪  直接读取的仓位是各基金的仓位均值，不是sum(A)/sum(B) 而是 mean(A/B)
+# tmp = fundPosSector.groupby('Date')['SW_Pct'].sum()
+# tmp.values * 100 - fundPosTotal.values
+# # 以20191231为例，计算如果sum(A)/sum(B)的总仓位应该是多少,是80吗？基金仓位的平均是88左右,不是80， 是88左右，说明分行业的数不对
+# #
+#
+# tstDate = pd.to_datetime('20191231')
+# total20170630 = fundPosUniv[fundPosUniv['Date_x'] == tstDate]  #
+# total20170630['Stock_Pos'].mean() # 86.33208927259359
+# total20170630['Stk_Value'].sum() / total20170630['Fund_Value'].sum()  # 0.872698 # 这种计算不合适，因为nan/sum会排除，但分开计算就没有排除
+# print(total20170630['Stk_Value'].sum()) # 1316306935113
+# print(total20170630['Fund_Value'].sum()) # 1508318851764
+# stkDetail = fundPosDetail[fundPosDetail['Date'] == tstDate]
+# stkDetail['Stk_Values'].sum()  # 千亿级别 差137万，可以忽略
+# fundValue = stkDetail.drop_duplicates(['Date', 'Fund_Code'])
+# fundValue['Fund_Value'].sum()  # 总数也有差别，为什么会少一些？fundPosDetail的总市值比fundPosUniv(106)的少
+# # 因为fundPosDetail有空值，一些新发基金，有总市值，但没有明细底仓数据
+# print(stkDetail['Stk_Values'].sum() / fundValue['Fund_Value'].sum() ) # 84.10 本身没问题，看分行业汇总是不是少很多
+# # 是的
+# stkDetail[pd.isnull(stkDetail['SW_Code'])]['Stk_Values'].sum() / fundValue['Fund_Value'].sum()   # 5.04% 差异在于一些港股，一些股票换行业过渡期缺失行业标签
+# stkDetail[~pd.isnull(stkDetail['SW_Code'])]['Stk_Values'].sum() / fundValue['Fund_Value'].sum()  # 79.06%
+#
+#
+#
+#############################################新发基金#################################################
+
+
+
+
+
+
+
+
+
 
 
 
