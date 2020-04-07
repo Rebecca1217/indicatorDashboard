@@ -19,7 +19,7 @@ marginTDTotal = pd.DataFrame(marginTDPlot.groupby('Date')['Margin_TD_Balance'].s
 assert len(marginTDSH) == len(marginTDSZ) == len(marginTDTotal)
 
 
-#  箱线图
+###################################################  箱线图  ######################################################
 marginData = {'沪市': marginTDSH['Margin_TD_Balance'], '深市': marginTDSZ['Margin_TD_Balance'], '全A': marginTDTotal['Margin_TD_Balance']}
 fig, ax = plt.subplots()
 # ax.boxplot(marginData.values(), showfliers=False, widths=0.001)
@@ -87,7 +87,7 @@ plt.title('融资交易对市场交易量占比')
 plt.show()
 
 
-# 饼图
+############################################### 成交量饼图 ############################################
 pieData = pd.DataFrame({'Margin_TD_Balance': [marginTDSH['Margin_TD_Balance'][-1],
                                               marginTDSZ['Margin_TD_Balance'][-1]]},
                        index=['沪市', '深市'])
@@ -110,7 +110,7 @@ def pie_plot(plotData, plotTitle):
     return
 pie_plot(pieData, '两市融资融券余额占比')
 
-# 指数成交量柱状图
+################################################# 指数成交量柱状图  ##############################################
 # fig, ax = plt.subplots()
 tdAmountSH = pd.read_hdf('dataForPlot/tdAmountSH.hdf')
 tdAmountSH.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountSH.index.get_level_values('Date')]
@@ -147,4 +147,136 @@ plt.show()
 # plt.show()
 
 
-#  基金仓位表格
+############################################   基金仓位表格  ########################################
+
+
+
+
+
+
+################################################ 新发基金 ########################################
+weekCount = pd.read_hdf('dataForPlot/newFundData.hdf', key='weekCount')
+monthCount = pd.read_hdf('dataForPlot/newFundData.hdf', key='monthCount')
+fundRes = pd.read_hdf('dataForPlot/newFundData.hdf', key='fundRes')
+#  输出四个值的表格
+fig = plt.figure(dpi=80)
+ax = fig.add_subplot(1,1,1)
+table_data=fundRes.values
+table = ax.table(cellText=table_data, colLabels=fundRes.columns, colColours='#8b8b8b', loc='center')
+table.set_fontsize(14)
+table.scale(1,4)
+ax.axis('off')
+plt.show()
+# 柱状图
+del weekCount['Week_Label'], monthCount['Month_Label']
+weekCount.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in weekCount.index.get_level_values('Date')]
+monthCount.index = [pd.to_datetime(str(x)).strftime('%Y/%m') for x in monthCount.index.get_level_values('Date')]
+weekCount['Collection'] = weekCount['Collection'] / 1e8
+monthCount['Collection'] = monthCount['Collection'] / 1e8
+weekColor = ['#8b8b8b'] * (len(weekCount) - 1) + ['#e74c3c']
+monthColor = ['#8b8b8b'] * (len(monthCount) - 1) + ['#e74c3c']
+
+# 新发基金周度柱状图
+fig, ax = plt.subplots()
+plt.bar(list(range(len(weekCount))), weekCount['Collection'].values,
+        tick_label=weekCount.index, color=weekColor, width=0.5)
+ax.set_xticklabels(weekCount.index, rotation = 90, ha="right")
+marker = weekCount.iloc[-1, weekCount.columns.get_loc('Collection')]
+ax.text(len(weekCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
+tickNum = 10
+xTicks = [int(round(x, 0)) for x in np.linspace(0,len(weekCount.index) - 1, tickNum, endpoint=True)]
+xTicksLabel = weekCount.index[xTicks]
+ax.set_xticks(xTicks)
+# xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+ax.set_xticklabels(xTicksLabel, rotation=90, ha="right")
+plt.title('近3年周度新发基金规模（亿）')
+plt.show()
+
+# 新发基金月度柱状图
+fig, ax = plt.subplots()
+plt.bar(list(range(len(monthCount))), monthCount['Collection'].values,
+        tick_label=monthCount.index, color=monthColor, width=0.5)
+ax.set_xticklabels(monthCount.index, rotation = 90, ha="right")
+marker = monthCount.iloc[-1, monthCount.columns.get_loc('Collection')]
+ax.text(len(monthCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
+tickNum = 10
+xTicks = [int(round(x, 0)) for x in np.linspace(0,len(monthCount.index) - 1, tickNum, endpoint=True)]
+xTicksLabel = monthCount.index[xTicks]
+ax.set_xticks(xTicks)
+# xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+ax.set_xticklabels(xTicksLabel, rotation=90, ha="right")
+plt.title('近3年月度新发基金规模（亿）')
+plt.show()
+
+
+############################################ 月度IPO柱状图 ###################################################
+monthCountIPO = pd.read_hdf('dataForPlot/monthCountIPO.hdf', key='monthCountIPO')
+monthCountIPO['Collection'] = round(monthCountIPO['Collection'] / 100000000, 0).astype(int) # 亿元
+del monthCountIPO['Month_Label']
+monthCountIPO.index = [pd.to_datetime(str(x)).strftime('%Y/%m') for x in monthCountIPO.index.get_level_values('Date')]
+color = ['#8b8b8b'] * (len(monthCountIPO) - 1) + ['#e74c3c']
+# 最后一列柱突出颜色并标记数字
+fig, ax = plt.subplots()
+plt.bar(list(range(len(monthCountIPO))), monthCountIPO['Collection'].values,
+        tick_label=monthCountIPO.index, color=color, width=0.5)
+ax.set_xticklabels(monthCountIPO.index, rotation = 90, ha="right")
+marker = monthCountIPO['Collection'][-1]
+# ax.scatter(len(monthCountIPO), marker, c='black')
+ax.text(len(monthCountIPO) - 1.5, marker + 5, str(marker))
+# fig.tight_layout()
+plt.title('近3年月度IPO规模（亿）')
+plt.show()
+
+###################################################  A/H溢价####################################################
+dataAH = pd.read_hdf('dataForPlot/dataAH.hdf', key='dataAH')
+closeMean = dataAH['Close'].mean()
+closeSigma = dataAH['Close'].std()
+closeS1Plus = closeMean + closeSigma
+closeS1Minus = closeMean - closeSigma
+closeS2Plus = closeMean + 2 * closeSigma
+closeS2Minus = closeMean - 2 * closeSigma
+
+# 画两张折线图
+
+# sns.set(font='SimHei', style='ticks')  # deep
+# flatui = ['#e74c3c', '#8b8b8b', '#6e97c8', '#edbe8b', '#9b93c8', '#2e8b78', '#696969', '#f08080']  # 红灰蓝橙紫绿
+# sns.set_palette(flatui)
+# sns.palplot(sns.color_palette())
+def plot_line(plotData, sig1Plus, sig1Minus, sig2Plus, sig2Minus, title):
+    fig, ax = plt.subplots()
+    plotData.plot(color='#e74c3c', title=title, legend=True)
+    plt.hlines(sig1Plus, plotData.index.min(), plotData.index.max(), colors='grey', linestyles='dashed')
+    plt.hlines(sig2Plus, plotData.index.min(), plotData.index.max(), colors='grey', linestyles='dashdot')
+    plt.hlines(sig1Minus, plotData.index.min(), plotData.index.max(), colors='grey', linestyles='dashed')
+    plt.hlines(sig2Minus, plotData.index.min(), plotData.index.max(), colors='grey', linestyles='dashdot')
+    plt.legend(labels=['指数价格', '一倍标准差', '两倍标准差'], loc='upper right')
+    plt.xlabel('')
+    # plt.tight_layout()
+    # plt.autoscale()
+    #  这个地方设置横坐标轴需要调整
+    tickNum = 10
+    xTicks = [int(round(x, 0)) for x in np.linspace(0,len(plotData.index) - 1, tickNum, endpoint=True)]
+    xTicks = plotData.index[xTicks]
+    ax.set_xticks(xTicks)
+    xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+    ax.set_xticklabels(xTicksLabel, rotation=90, ha="right")
+    plt.show()
+    return
+plot_line(dataAH['Close'], closeS1Plus, closeS1Minus, closeS2Plus, closeS2Minus, 'A/H溢价指数历史走势')
+
+fig, ax = plt.subplots()
+ax = dataAH['Close_Pct'].plot(color='#e74c3c', title='A/H溢价指数历史分位数走势', legend=False)
+plt.xlabel('')
+tickNum = 10
+xTicks = [int(round(x, 0)) for x in np.linspace(0,len(dataAH['Close_Pct'].index) - 1, tickNum, endpoint=True)]
+xTicks = dataAH['Close_Pct'].index[xTicks]
+ax.set_xticks(xTicks)
+xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+ax.set_xticklabels(xTicksLabel, rotation=90, ha="right")
+ax.set_yticklabels(['{:,.0%}'.format(x) for x in ax.get_yticks()])
+marker = dataAH['Close_Pct'][-1]
+plt.annotate('{:,.1%}'.format(marker), xy=(dataAH.index[-1], marker),
+             xytext=(dataAH.index[-500], marker + 0.3),  # 这个横坐标怎么确定的，奇怪？
+            arrowprops=dict(facecolor='black', shrink=1, width=0.3, headlength=11,headwidth=3)
+            )
+plt.show()

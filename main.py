@@ -10,6 +10,7 @@ from public.getTradingDays import get_trading_days, get_trading_days2
 from public.getStockFundPos import get_stock_fund_pos
 from public.getSWComponent import get_component_SW
 from public.basicInfoSW import basic_info_SW
+from public.attachDateLabel import attach_date_label
 import datetime
 
 
@@ -232,10 +233,108 @@ posTable['Delta'] = posTable[currPeriod] - posTable[lastPeriod]
 #
 #
 #############################################新发基金#################################################
+dateFrom = '20150101'  # 最终只取过去3年数据
+dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
+dateSeq = get_trading_days(dateFrom, dateTo)
+dateSeq = attach_date_label(pd.DataFrame(dateSeq), 'month')
+dateSeq = attach_date_label(dateSeq, 'week')
+weekSeq = dateSeq[dateSeq['If_Week_End']]
+monthSeq = dateSeq[dateSeq['If_Month_End']]  # 这是全部的时间，后面把新发基金的数据merge到这个时间上
+
+sqlStr = 'select  a.F_INFO_WINDCODE, F_INFO_SETUPDATE, c.F_ISSUE_TOTALUNIT * c.F_INFO_PARVALUE * 100000000 as ' \
+         'Collection from ChinaMutualFundSector a ' \
+         'inner join AShareIndustriesCode b on a.S_INFO_SECTOR=b.INDUSTRIESCODE ' \
+         'left join ChinaMutualFundDescription c ' \
+         'on a.F_INFO_WINDCODE = c.F_INFO_WINDCODE ' \
+         'where a.S_INFO_SECTOR in (\'2001010201000000\', \'2001010101000000\')'
+
+stkFund = get_wind_data(sqlStr)
+stkFund = pd.DataFrame(stkFund, columns=['Fund_Code', 'Setup_Date', 'Collection'])
+stkFund['Setup_Date'] = pd.to_datetime(stkFund['Setup_Date'])
+stkFund['Collection'] = stkFund['Collection'].astype(float)
+stkFund.sort_values('Setup_Date', inplace=True)
+stkFund['Date'] = stkFund['Setup_Date']
+stkFund.set_index('Date', inplace=True)
+stkFundWeek = attach_date_label(stkFund, 'week')  # 07年之前的有些基金setup date是非交易日，不影响最近3年可不处理
+stkFundMonth = attach_date_label(stkFund, 'month')
+weekCount = stkFundWeek.groupby('Week_Label')['Collection'].sum()
+monthCount = stkFundMonth.groupby('Month_Label')['Collection'].sum()
+
+weekCount = weekSeq.merge(pd.DataFrame(weekCount), how='left', on='Week_Label').set_index(weekSeq.index)
+# 这里merge完了Week_Label不知怎么就变成object了，需要调整一下，不然存hdf会报警告
+weekCount['Week_Label'] = weekCount['Week_Label'].astype(int)
+weekCount = weekCount[['Week_Label', 'Collection']]
+monthCount = monthSeq.merge(pd.DataFrame(monthCount), how='left', on='Month_Label').set_index(monthSeq.index)
+monthCount['Month_Label'] = monthCount['Month_Label'].astype(int)
+monthCount = monthCount[['Month_Label', 'Collection']]
+weekCount['Collection'] = weekCount['Collection'].fillna(0)
+monthCount['Collection'] = monthCount['Collection'].fillna(0)
+
+# 筛选出过去3年的部分
+dateFrom3Year = datetime.datetime.strftime(pd.to_datetime(dateTo) - datetime.timedelta(365*3), '%Y%m%d')
+weekCount = weekCount[weekCount.index >= pd.to_datetime(dateFrom3Year)]
+monthCount = monthCount[monthCount.index >= pd.to_datetime(dateFrom3Year)]
+
+# 输出4个数值：过去一周和一月新发规模数据（两个数值）和对应在过去三年上的历史分位数（两个数值）
+res1 = weekCount['Collection'][-1]
+res2 = monthCount['Collection'][-1]
+res3 = weekCount['Collection'].rank()[-1] / len(weekCount)
+res4 = monthCount['Collection'].rank()[-1] / len(monthCount)
+fundRes = pd.DataFrame({'上周新发规模': '{:.1f}亿'.format(res1/100000000),
+                        '上月新发规模': '{:.1f}亿'.format(res2/100000000),
+                        '上周新发规模分位数': '{:.1%}'.format(res3),
+                        '上月新发规模分位数': '{:.1%}'.format(res4)},
+                        index=['value'])
+weekCount.to_hdf('dataForPlot/newFundData.hdf', key='weekCount', type='w')
+monthCount.to_hdf('dataForPlot/newFundData.hdf', key='monthCount', type='w')
+fundRes.to_hdf('dataForPlot/newFundData.hdf', key='fundRes', type='w')
+
+###############################################A/H溢价#################################################
+dateFrom = '20060101'   #从有数据开始
+dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
+sqlStr = 'select  S_INFO_WINDCODE, TRADE_DT, S_DQ_CLOSE from HKIndexEODPrices ' \
+         'where S_INFO_WINDCODE = \'HSAHP.HI\' ' \
+         'and TRADE_DT >= {0} and TRADE_DT <= {1} ' \
+         'order by TRADE_DT'.format(dateFrom, dateTo)
+dataAH = pd.DataFrame(get_wind_data(sqlStr), columns=['Index_Code', 'Date', 'Close'])
+dataAH['Date'] = pd.to_datetime(dataAH['Date'])
+dataAH['Close'] = dataAH['Close'].astype(float)
+dataAH.set_index('Date', inplace=True)
+dataAH['Close_Pct'] = dataAH['Close'].expanding(min_periods=1).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=True)
+dataAH.to_hdf('dataForPlot/dataAH.hdf', key='dataAH', type='w')
 
 
 
+###############################################IPO规模####################################################
 
+dateFrom = '20150101'  # 最终只取过去3年数据
+dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
+dateSeq = get_trading_days(dateFrom, dateTo)
+dateSeq = attach_date_label(pd.DataFrame(dateSeq), 'month')
+dateSeq.iloc[-1, dateSeq.columns.get_loc('If_Month_End')] = True  #  当月显示月初至今，需要对日期的最后一个If_Month_End调整成True
+
+monthSeq = dateSeq[dateSeq['If_Month_End']].copy()  # 这是全部的时间，后面把新发基金的数据merge到这个时间上
+
+sqlStr = 'select S_INFO_WINDCODE, S_IPO_COLLECTION * 10000 as Collection, S_IPO_LISTDATE from AShareIPO ' \
+         'where S_IPO_LISTDATE >= {0} ' \
+         'order by S_IPO_LISTDATE'.format(dateFrom)
+stkUniv = get_wind_data(sqlStr)
+stkUniv = pd.DataFrame(stkUniv, columns=['Stock_Code', 'Collection', 'List_Date'])
+stkUniv['List_Date'] = pd.to_datetime(stkUniv['List_Date'])
+stkUniv['Collection'] = stkUniv['Collection'].astype(float)
+stkUniv['Date'] = stkUniv['List_Date']
+stkUniv.set_index('Date', inplace=True)
+stkMonth = attach_date_label(stkUniv, 'month')
+monthCountIPO = stkMonth.groupby('Month_Label')['Collection'].sum()
+
+monthCountIPO = monthSeq.merge(pd.DataFrame(monthCountIPO), how='left', on='Month_Label').set_index(monthSeq.index)
+monthCountIPO = monthCountIPO[['Month_Label', 'Collection']]
+monthCountIPO['Collection'] = monthCountIPO['Collection'].fillna(0)
+
+# 筛选出过去3年的部分
+dateFrom3Year = datetime.datetime.strftime(pd.to_datetime(dateTo) - datetime.timedelta(365*3), '%Y%m%d')
+monthCountIPO = monthCountIPO[monthCountIPO.index >= pd.to_datetime(dateFrom3Year)]
+monthCountIPO.to_hdf('dataForPlot/monthCountIPO.hdf', key='monthCountIPO', type='w')
 
 
 

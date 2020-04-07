@@ -20,5 +20,16 @@ def attach_date_label(inputDF, dateType):
     attachLabel = get_trading_days2(dateFrom, dateTo, dateType)
 
     res = inputDF.merge(attachLabel, how='left', on='Date').set_index(inputDF.index)
+    def repective_col(i):
+        switcher = {
+            'week': 'Week_Label',
+            'month': 'Month_Label',
+            'quarter': 'Quarter_Label',
+            'halfyear': 'Halfyear_Label',
+            'year': 'Year_Label'
+        }
+        return switcher.get(dateType, "Invalid day of week")
+    col = repective_col(dateType)
+    res[col] = res[col].astype('Int64')
 
     return res

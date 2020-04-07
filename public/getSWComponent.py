@@ -10,7 +10,8 @@ def get_component_SW(dateFrom, dateTo):
              'SWIndexMembers where S_INFO_WINDCODE in ' \
              '(select INDUSTRIESALIAS + \'.SI\' from ASHAREINDUSTRIESCODE where ' \
              'LEVELNUM = 2 and INDUSTRIESCODE like \'61%\') and ' \
-             '(S_CON_INDATE <= {} and (S_CON_OUTDATE > {} or S_CON_OUTDATE is null))'.format(dateTo, dateFrom)
+             '(S_CON_INDATE <= {} and (S_CON_OUTDATE >= {} or S_CON_OUTDATE is null))'.format(dateTo, dateFrom)
+    # Note: 为什么这个地方Indate和Outdate都有等于号：纳入是当天的0点就开始，而剔除的话是截止到剔除日期的24:00结束
 
     swComponent = get_wind_data(exeStr)
     swComponent = pd.DataFrame(swComponent, columns=['SW_Code', 'Stock_Code', 'In_Date', 'Out_Date'])
@@ -34,7 +35,7 @@ def get_component_SW(dateFrom, dateTo):
         swComponentFull = pd.concat([tradingDays, swComponentRep], axis=1)
 
         swComponentFull['Valid'] = (swComponentFull['Date'] >= swComponentFull['In_Date']) & \
-                                ((swComponentFull['Date'] < swComponentFull['Out_Date']) |
+                                ((swComponentFull['Date'] <= swComponentFull['Out_Date']) |
                                  (swComponentFull['Out_Date'].isnull()))  # 当天进当天出
         swComponent = swComponentFull[swComponentFull['Valid']]
         swComponent.reset_index(drop=True, inplace=True)  # 数据筛选后必须reset index 不然index还是原来indexPosFull的
