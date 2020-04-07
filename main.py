@@ -28,7 +28,7 @@ marginTD['Date'] = pd.to_datetime(marginTD['Date'])
 marginTD[['Buy_Balance', 'Sell_Balance', 'Margin_TD_Balance', 'Buy']] = marginTD[['Buy_Balance', 'Sell_Balance', 'Margin_TD_Balance', 'Buy']].apply(lambda x: x.astype(float))
 marginTD.sort_values(['Mkt', 'Date'], inplace=True)
 marginTD['Buy_MA'] = marginTD.groupby('Mkt')['Buy'].rolling(window=10, min_periods=10).mean().values
-marginTD.to_hdf('dataForPlot/marginTD.hdf', key='marginTD', type='w')
+marginTD.to_hdf('dataForPlot/marginTDData.hdf', key='marginTD', type='w', format='table')
 
 # A股每日成交量数据  注意A股成交金额单位是千元
 sqlStr = 'select TRADE_DT, S_INFO_WINDCODE, right(S_INFO_WINDCODE, 2) as Mkt, S_DQ_AMOUNT * 1000 as Amount from AShareEODPrices where ' \
@@ -54,7 +54,7 @@ marginTDMkt.loc[marginTDMkt['Mkt'] == 'SZSE', 'Mkt'] = 'SZ'
 marginTDMkt.set_index(['Date', 'Mkt'], inplace=True)
 marAmountRatio = mktAmount.merge(marginTDMkt, how='left', left_index=True, right_index=True)
 marAmountRatio['Ratio'] = marAmountRatio['Buy_MA'] / marAmountRatio['TD_Amount_MA'] # 分市场融资交易MA占交易金额MA比重
-marAmountRatio.to_hdf('dataForPlot/marAmountRatio.hdf', key='marAmountRatio', type='w')
+marAmountRatio.to_hdf('dataForPlot/marginTDData.hdf', key='marAmountRatio', type='w', format='table')
 # 全市场要从头开始另算，因为不能MA_SH + MA+SZ = MA_Total
 marAmountT = pd.DataFrame(tdAmount.groupby('Date')['TD_Amount'].sum())  # total
 marAmountT.sort_values(['Date'], inplace=True)
@@ -63,13 +63,12 @@ marAmountT = marAmountT[marAmountT.index >= pd.to_datetime(dateFrom)].copy()
 marAmountTRatio = marAmountT.merge(marginTD.groupby('Date')['Buy'].sum(), how='left', left_index=True, right_index=True)
 marAmountTRatio['Buy_MA'] = marAmountTRatio['Buy'].rolling(window=10, min_periods=10).mean().values
 marAmountTRatio['Ratio'] = marAmountTRatio['Buy_MA'] / marAmountTRatio['TD_Amount_MA']
-marAmountTRatio.to_hdf('dataForPlot/marAmountTRatio.hdf', key='marAmountTRatio', type='w')
+marAmountTRatio.to_hdf('dataForPlot/marginTDData.hdf', key='marAmountTRatio', type='w', format='table')
 
 # # print当前融资交易占比及历史分位数  2020.03.23, 9.14% ,历史分位数是58.62%，最新已经降下来了
 ## 广发的流动性跟踪这个数据是本周，以5天rolling计算的
 # print('当前占比： ' + '{:.2%}'.format(marAmountTRatio['Ratio'][-1]))
 # print('历史分位数： ' + '{:.2%}'.format(marAmountTRatio['Ratio'].rank()[-1] / len(mktAmountTRatio)))
-
 
 ############################################ 指数总交易量数据 ########################################
 # 从AIndexEODPrices读取的指数交易量数据，创业板指实际是创业板综，所以干脆都自己读成分股自己汇总
@@ -87,22 +86,23 @@ def get_index_amount(index_code, dateFrom, dateTo):
 
 # 上证综指成分股000001.SH
 tdAmountSH = get_index_amount('000001.SH', dateFrom20, dateTo)
-tdAmountSH.to_hdf('dataForPlot/tdAmountSH.hdf', key='tdAmountSH', type='w')
 # 沪深300成分股000300.SH
 tdAmount300 = get_index_amount('000300.SH', dateFrom20, dateTo)
-tdAmount300.to_hdf('dataForPlot/tdAmount300.hdf', key='tdAmount300', type='w')
 # 中证500成分股000905.SH
 tdAmount500 = get_index_amount('000905.SH', dateFrom20, dateTo)
-tdAmount500.to_hdf('dataForPlot/tdAmount500.hdf', key='tdAmount500', type='w')
 # 创业板指成分股399006.SZ
 tdAmountGEM = get_index_amount('399006.SZ', dateFrom20, dateTo)
-tdAmountGEM.to_hdf('dataForPlot/tdAmountGEM.hdf', key='tdAmountGEM', type='w')
+tdAmountSH.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountSH', type='w')
+tdAmount300.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount300', type='w')
+tdAmount500.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount500', type='w')
+tdAmountGEM.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountGEM', type='w')
+
 
 ###############################################基金仓位###############################################
 # 选取股票型和偏股混合型基金
 # 问题：同一只基金的场内和场外是否需要只保留一个？
 # 日期序列就是年中和年末
-# @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里需要修改一下
+# @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里需要修改一下(改成季度就不能和分行业的放在一个表里了）
 dateFrom = '20100101'
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
 dateSeq = get_trading_days(dateFrom, dateTo)
@@ -174,6 +174,7 @@ fundPosDetail = fundPosDetail[['Date_x', 'Fund_Code', 'Stock_Code', 'Stk_Values'
 fundPosDetail.columns = ['Date', 'Fund_Code', 'Stock_Code', 'Stk_Values', 'Fund_Value']
 #   到目前为止，还没有剔除过程中才进来或者中途出去的基金，需要再match一步
 #  为了严谨做这一步，事实上这部分stockPortfolio表绝大部分也没数据，对结果应该没影响
+#  没有的，中间往fundUnivHY上merge就是全部有效的底仓，不需要再match了
 
 
 #  贴行业标签计算行业权重
@@ -190,6 +191,13 @@ swPara = basic_info_SW()
 swPara['SW_Code'] = swPara['Wind_Code'] + '.SI'
 fundPosSector = fundPosSector.merge(swPara[['SW_Code', 'SW_Name']], how='left', on='SW_Code').set_index(fundPosSector.index)
 
+# 怎么判断当前的最新一期是否已经更新完数据，通过时间无法判断，只能通过结果反推，如果底仓汇总的结果和总数差异过大(>3%)，就说明还没更新完
+# 汇总的时候不要用行业汇总，直接用底仓汇总(事实上就算<3%了，一段时间应该也会继续更新缩小，diff最终应该小于1%)
+diff = (fundPosDetail.groupby(['Date'])['Stk_Values'].sum() / totalNav['Fund_Value']) * 100 - fundPosTotal.values
+if abs(diff[-1]) > 3:
+    fundPosSector = fundPosSector[fundPosSector.index <= fundPosSector.index.unique()[-2]]
+    fundPosTotal = fundPosTotal[fundPosTotal.index <= fundPosTotal.index.unique()[-2]]
+assert all(fundPosSector.index.unique() == fundPosTotal.index.unique())
 # 总仓位和各行业配置比例变动，输出表格结果
 currPeriod = fundPosSector.index.unique()[-1]
 lastPeriod = fundPosSector.index.unique()[-2]
@@ -199,13 +207,19 @@ sectorPctTable = sectorPctTable.merge(swPara.loc[swPara['Used_Label'] == 1, ['SW
 sectorPctTable.sort_values(['Used_Label', 'SW_Name'], ascending=False, inplace=True) # 把已经不用的行业放在最下面
 sectorPctTable.reset_index(drop=True, inplace=True)  # 历史仓位变化图
 
-sectorPctTableCurr = sectorPctTable[['SW_Name', lastPeriod, currPeriod]]
-# 把总仓位加在最上面一排一起计算
+sectorPctTableCurr = sectorPctTable[['SW_Name', lastPeriod, currPeriod, 'Used_Label']].copy()
+sectorPctTableCurr = sectorPctTableCurr[sectorPctTableCurr ['Used_Label'] == 1]
+del sectorPctTableCurr['Used_Label']
+# 把总仓位加在最上面一排一起计算  本期和上期仓位变化这个表就不显示已经废弃的行业了
 totalPctCurr = pd.DataFrame(fundPosTotal).transpose()[[lastPeriod, currPeriod]] / 100
 totalPctCurr['SW_Name'] = '总仓位'
 totalPctCurr = totalPctCurr[['SW_Name', lastPeriod, currPeriod]]
 posTable = pd.concat([totalPctCurr, sectorPctTableCurr], axis=0).reset_index(drop=True)
 posTable['Delta'] = posTable[currPeriod] - posTable[lastPeriod]
+
+del sectorPctTable['Used_Label']
+sectorPctTable.to_hdf('dataForPlot/fundPosData.hdf', key='sectorPctTable', type='w', format='table')
+posTable.to_hdf('dataForPlot/fundPosData.hdf', key='posTable', type='w', format='table')
 
 
 # # 核对计算明细后的仓位和直接读取的仓位差异在哪  直接读取的仓位是各基金的仓位均值，不是sum(A)/sum(B) 而是 mean(A/B)
@@ -303,8 +317,6 @@ dataAH.set_index('Date', inplace=True)
 dataAH['Close_Pct'] = dataAH['Close'].expanding(min_periods=1).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=True)
 dataAH.to_hdf('dataForPlot/dataAH.hdf', key='dataAH', type='w')
 
-
-
 ###############################################IPO规模####################################################
 
 dateFrom = '20150101'  # 最终只取过去3年数据
@@ -334,7 +346,7 @@ monthCountIPO['Collection'] = monthCountIPO['Collection'].fillna(0)
 # 筛选出过去3年的部分
 dateFrom3Year = datetime.datetime.strftime(pd.to_datetime(dateTo) - datetime.timedelta(365*3), '%Y%m%d')
 monthCountIPO = monthCountIPO[monthCountIPO.index >= pd.to_datetime(dateFrom3Year)]
-monthCountIPO.to_hdf('dataForPlot/monthCountIPO.hdf', key='monthCountIPO', type='w')
+monthCountIPO.to_hdf('dataForPlot/monthCountIPO.hdf', key='monthCountIPO', type='w', format='table')
 
 
 

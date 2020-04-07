@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import datetime
 
 
 # @created @2020.03.30
-marginTDPlot = pd.read_hdf('dataForPlot/marginTD.hdf', key='marginTD')
+marginTDPlot = pd.read_hdf('dataForPlot/marginTDData.hdf', key='marginTD')
 marginTDPlot['Margin_TD_Balance'] = marginTDPlot['Margin_TD_Balance'] / 100000000
 marginTDSH = marginTDPlot.loc[marginTDPlot['Mkt'] == 'SSE', ['Date','Margin_TD_Balance']].copy()
 marginTDSZ = marginTDPlot.loc[marginTDPlot['Mkt'] == 'SZSE', ['Date', 'Margin_TD_Balance']].copy()
@@ -48,8 +49,8 @@ plt.show()
 
 
 # 箱线图2
-marAmountRatio = pd.read_hdf('dataForPlot/marAmountRatio.hdf')
-marAmountTRatio = pd.read_hdf('dataForPlot/marAmountTRatio.hdf')
+marAmountRatio = pd.read_hdf('dataForPlot/marginTDData.hdf', key='marAmountRatio')
+marAmountTRatio = pd.read_hdf('dataForPlot/marginTDData.hdf', key='marAmountTRatio')
 marAmountRatio = marAmountRatio[~np.isnan(marAmountRatio['Ratio'])]
 marAmountTRatio = marAmountTRatio[~np.isnan(marAmountTRatio['Ratio'])]
 marRatioSH = marAmountRatio[marAmountRatio.index.get_level_values('Mkt') == 'SH'].copy()
@@ -112,25 +113,25 @@ pie_plot(pieData, '两市融资融券余额占比')
 
 ################################################# 指数成交量柱状图  ##############################################
 # fig, ax = plt.subplots()
-tdAmountSH = pd.read_hdf('dataForPlot/tdAmountSH.hdf')
+tdAmountSH = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountSH')
 tdAmountSH.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountSH.index.get_level_values('Date')]
 tdAmountSH.plot.bar(color='#e74c3c')
 plt.title('上证综指近20交易日成交量（亿）')
 plt.show()
 
-tdAmount300 = pd.read_hdf('dataForPlot/tdAmoun300.hdf')
+tdAmount300 = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount300')
 tdAmount300.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount300.index.get_level_values('Date')]
 tdAmount300.plot.bar(color='#e74c3c')
 plt.title('沪深300近20交易日成交量（亿）')
 plt.show()
 
-tdAmount500 = pd.read_hdf('dataForPlot/tdAmount500.hdf')
+tdAmount500 = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount500')
 tdAmount500.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount500.index.get_level_values('Date')]
 tdAmount500.plot.bar(color='#e74c3c')
 plt.title('中证500近20交易日成交量（亿）')
 plt.show()
 
-tdAmountGEM = pd.read_hdf('dataForPlot/tdAmountGEM.hdf')
+tdAmountGEM = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountGEM')
 tdAmountGEM.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountGEM.index.get_level_values('Date')]
 tdAmountGEM.plot.bar(color='#e74c3c')
 plt.title('创业板指近20交易日成交量（亿）')
@@ -148,11 +149,31 @@ plt.show()
 
 
 ############################################   基金仓位表格  ########################################
+posTable = pd.read_hdf('dataForPlot/fundPosData.hdf', key='posTable')
+sectorPctTable = pd.read_hdf('dataForPlot/fundPosData.hdf', key='sectorPctTable')
+posTable.iloc[:, 1:4] = posTable.iloc[:, 1:4].apply(lambda x: ['{:.1%}'.format(e) for e in x])
+fig = plt.figure(dpi=120)
+ax = fig.add_subplot(1,1,1)
+table_data=posTable.values
+table = ax.table(cellText=table_data,
+                 colLabels=['行业分类', '上期仓位', '本期仓位', '本期相对上期变化'],
+                 loc='center')
+table.set_fontsize(10)
+table.scale(1,0.8)
+ax.axis('off')
+plt.show()
 
-
-
-
-
+# 分行业画历史仓位热力图
+heatTable = sectorPctTable.fillna(0)
+heatTable.set_index('SW_Name', inplace=True)
+heatTable.columns = [datetime.datetime.strftime(x, '%Y/%m')for x in heatTable.columns]
+fig, ax = plt.subplots()
+sns.heatmap(heatTable * 100, annot=False, cmap='OrRd', cbar_kws={'format': '%.0f%%'},
+            xticklabels=True, yticklabels=True)
+ax.set_yticklabels(ax.get_yticklabels(), size = 8)
+plt.ylabel('')
+plt.title('权益类基金行业仓位历史分布图')
+plt.show()
 
 ################################################ 新发基金 ########################################
 weekCount = pd.read_hdf('dataForPlot/newFundData.hdf', key='weekCount')
@@ -162,7 +183,7 @@ fundRes = pd.read_hdf('dataForPlot/newFundData.hdf', key='fundRes')
 fig = plt.figure(dpi=80)
 ax = fig.add_subplot(1,1,1)
 table_data=fundRes.values
-table = ax.table(cellText=table_data, colLabels=fundRes.columns, colColours='#8b8b8b', loc='center')
+table = ax.table(cellText=table_data, colLabels=fundRes.columns, loc='center')
 table.set_fontsize(14)
 table.scale(1,4)
 ax.axis('off')
@@ -276,7 +297,7 @@ ax.set_xticklabels(xTicksLabel, rotation=90, ha="right")
 ax.set_yticklabels(['{:,.0%}'.format(x) for x in ax.get_yticks()])
 marker = dataAH['Close_Pct'][-1]
 plt.annotate('{:,.1%}'.format(marker), xy=(dataAH.index[-1], marker),
-             xytext=(dataAH.index[-500], marker + 0.3),  # 这个横坐标怎么确定的，奇怪？
+             xytext=(dataAH.index[-500], marker + 0.3),  # 横坐标是日期，不是数字
             arrowprops=dict(facecolor='black', shrink=1, width=0.3, headlength=11,headwidth=3)
             )
 plt.show()
