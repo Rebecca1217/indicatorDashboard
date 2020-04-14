@@ -26,24 +26,26 @@ fig, ax = plt.subplots()
 # ax.boxplot(marginData.values(), showfliers=False, widths=0.001)
 ax.boxplot(marginData.values(), whis=3, showfliers=False)  # 定义outliers |Q3-Q1| * whis
 ax.set_xticklabels(marginData.keys())
-mSH = marginTDSH['Margin_TD_Balance'].median()
-mSZ = marginTDSZ['Margin_TD_Balance'].median()
-mTotal = marginTDTotal['Margin_TD_Balance'].median()
 latestSH = marginTDSH['Margin_TD_Balance'][-1]
 latestSZ = marginTDSZ['Margin_TD_Balance'][-1]
 latestTotal = marginTDTotal['Margin_TD_Balance'][-1]
 ax.scatter(1, latestSH, c='grey', label='SH')
-ax.text(1 - 0.3, mSH, int(round(mSH, 0)))
+tiltDistance = 0.05
 quantileSH = '({0}%)'.format(round(marginTDSH['Margin_TD_Balance'].rank()[-1] / len(marginTDSH) * 100, 1))
-ax.text(1.15, latestSH, str(int(round(latestSH, 0))) + '\n' + quantileSH, ha='center', va='center')
+ax.text(1 - tiltDistance, latestSH, str(int(round(latestSH, 0))), ha='right', va='center')
+ax.text(1 + tiltDistance, latestSH, quantileSH, ha='left', va='center')
 ax.scatter(2, latestSZ, c='grey', label='SH')
-ax.text(2 - 0.3, mSZ, int(round(mSZ, 0)))
 quantileSZ = '({0}%)'.format(round(marginTDSZ['Margin_TD_Balance'].rank()[-1] / len(marginTDSZ) * 100, 1))
-ax.text(2.15, latestSZ, str(int(round(latestSZ, 0))) + '\n' +  quantileSZ, ha='center', va='center')
+ax.text(2 - tiltDistance, latestSZ, str(int(round(latestSZ, 0))), ha='right', va='center')
+ax.text(2 + tiltDistance, latestSZ, quantileSZ, ha='left', va='center')
 ax.scatter(3, latestTotal, c='grey', label='SH')
-ax.text(3 - 0.3, mTotal, int(round(mTotal, 0)))
 quantileTotal = '({0}%)'.format(round(marginTDTotal['Margin_TD_Balance'].rank()[-1] / len(marginTDTotal) * 100, 1))
-ax.text(3.15, latestTotal, str(int(round(latestTotal, 0))) + '\n' + quantileTotal, ha='center', va='center')
+ax.text(3 - tiltDistance, latestTotal, str(int(round(latestTotal, 0))), ha='right', va='center')
+ax.text(3 + tiltDistance, latestTotal,  quantileTotal, ha='left', va='center')
+ax.spines['right'].set_linewidth(0.3)
+ax.spines['left'].set_linewidth(0.3)
+ax.spines['top'].set_linewidth(0.3)
+ax.spines['bottom'].set_linewidth(0.3)
 plt.title('A股两融余额历史分位(亿元)')
 plt.show()
 
@@ -63,27 +65,28 @@ ax.boxplot(marRatioData.values(), whis=3, showfliers=False, widths=0.3, medianpr
 ax.set_xticklabels(marRatioData.keys())
 # ax.yaxis.set_major_formatter(mticker.PercentFormatter())  # 这种format会直接把数字加上% 而不是*100%
 ax.set_yticklabels(['{:,.1%}'.format(x) for x in ax.get_yticks()])
-mSH = marRatioSH['Ratio'].median()
-mSZ = marRatioSZ['Ratio'].median()
-mA = marAmountTRatio['Ratio'].median()
 latestSH = marRatioSH['Ratio'][-1]
 latestSZ = marRatioSZ['Ratio'][-1]
 latestA = marAmountTRatio['Ratio'][-1]
 # 沪市
 ax.scatter(1, latestSH, c='grey', label='SH')
-ax.text(1-0.32, mSH, '{:.1%}'.format(mSH))
 quantileSH = '({0}%)'.format(round(marRatioSH['Ratio'].rank()[-1] / len(marRatioSH) * 100, 1))
-ax.text(1.15, latestSH, str('{:.1%}'.format(latestSH)) + '\n' + quantileSH, ha='center', va='center')
+ax.text(1 - tiltDistance, latestSH, str('{:.1%}'.format(latestSH)), ha='right', va='center')
+ax.text(1 + tiltDistance, latestSH, quantileSH, ha='left', va='center')
 # 深市
 ax.scatter(2, latestSZ, c='grey', label='SZ')
-ax.text(2-0.32, mSZ, '{:.1%}'.format(mSZ))
 quantileSZ = '({0}%)'.format(round(marRatioSZ['Ratio'].rank()[-1] / len(marRatioSZ) * 100, 1))
-ax.text(2.15, latestSZ, str('{:.1%}'.format(latestSZ)) + '\n' + quantileSZ, va='center', ha='center')
+ax.text(2 - tiltDistance, latestSZ, str('{:.1%}'.format(latestSZ)), ha='right', va='center')
+ax.text(2 + tiltDistance, latestSZ, quantileSZ, ha='left', va='center')
 # 全A
 ax.scatter(3, latestA, c='grey', label='全A')
-ax.text(3-0.32, mA, '{:.1%}'.format(mA))
 quantileA = '({0}%)'.format(round(marAmountTRatio['Ratio'].rank()[-1] / len(marAmountTRatio) * 100, 1))
-ax.text(3.15, latestA, str('{:.1%}'.format(latestA)) + '\n' + quantileA, ha='center', va='center')
+ax.text(3 - tiltDistance, latestA, str('{:.1%}'.format(latestA)) , ha='right', va='center')
+ax.text(3 + tiltDistance, latestA, quantileA, ha='left', va='center')
+ax.spines['right'].set_linewidth(0.3)
+ax.spines['left'].set_linewidth(0.3)
+ax.spines['top'].set_linewidth(0.3)
+ax.spines['bottom'].set_linewidth(0.3)
 plt.title('融资交易对市场交易量占比')
 plt.show()
 
@@ -112,30 +115,35 @@ def pie_plot(plotData, plotTitle):
 pie_plot(pieData, '两市融资融券余额占比')
 
 ################################################# 指数成交量柱状图  ##############################################
-# fig, ax = plt.subplots()
+def plot_index_tdAmount(plotData, plotTitle):
+    fig, ax = plt.subplots()
+    plotData.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in plotData.index.get_level_values('Date')]
+    plotData.plot.bar(color='#e74c3c')
+    # 设置横坐标间隔 这个是固定60天的坐标轴，设置成每3天显示一个 tick
+    tickNum = 20
+    xTicks = [int(round(x, 0)) for x in np.linspace(0, len(plotData.index) - 1, tickNum, endpoint=True)]
+    xTicksLabel = plotData.index[xTicks]
+    ax.set_xticks(xTicks)
+    ax.set_xticklabels(xTicksLabel, rotation=50, ha='right')
+    ax.spines['right'].set_linewidth(0.3)
+    ax.spines['left'].set_linewidth(0.3)
+    ax.spines['top'].set_linewidth(0.3)
+    ax.spines['bottom'].set_linewidth(0.3)
+    plt.title(plotTitle)
+    plt.show()
+    return
+
 tdAmountSH = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountSH')
-tdAmountSH.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountSH.index.get_level_values('Date')]
-tdAmountSH.plot.bar(color='#e74c3c')
-plt.title('上证综指近20交易日成交量（亿）')
-plt.show()
+plot_index_tdAmount(tdAmountSH, '上证综指近60交易日成交量（亿）')
 
 tdAmount300 = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount300')
-tdAmount300.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount300.index.get_level_values('Date')]
-tdAmount300.plot.bar(color='#e74c3c')
-plt.title('沪深300近20交易日成交量（亿）')
-plt.show()
+plot_index_tdAmount(tdAmount300, '沪深300近60交易日成交量（亿）')
 
 tdAmount500 = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount500')
-tdAmount500.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmount500.index.get_level_values('Date')]
-tdAmount500.plot.bar(color='#e74c3c')
-plt.title('中证500近20交易日成交量（亿）')
-plt.show()
+plot_index_tdAmount(tdAmount500, '中证500近60交易日成交量（亿）')
 
 tdAmountGEM = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountGEM')
-tdAmountGEM.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in tdAmountGEM.index.get_level_values('Date')]
-tdAmountGEM.plot.bar(color='#e74c3c')
-plt.title('创业板指近20交易日成交量（亿）')
-plt.show()
+plot_index_tdAmount(tdAmountGEM, '创业板指近60交易日成交量（亿）')
 
 
 # # import matplotlib.dates as mdates
@@ -146,7 +154,6 @@ plt.show()
 # plt.title('创业板指近20交易日成交量（亿）')
 # plt.xlabel(' ')
 # plt.show()
-
 
 ############################################   基金仓位表格  ########################################
 posTable = pd.read_hdf('dataForPlot/fundPosData.hdf', key='posTable')
@@ -192,8 +199,8 @@ plt.show()
 del weekCount['Week_Label'], monthCount['Month_Label']
 weekCount.index = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in weekCount.index.get_level_values('Date')]
 monthCount.index = [pd.to_datetime(str(x)).strftime('%Y/%m') for x in monthCount.index.get_level_values('Date')]
-weekCount['Collection'] = weekCount['Collection'] / 1e8
-monthCount['Collection'] = monthCount['Collection'] / 1e8
+weekCount['Collection'] = weekCount['Collection']
+monthCount['Collection'] = monthCount['Collection']
 weekColor = ['#8b8b8b'] * (len(weekCount) - 1) + ['#e74c3c']
 monthColor = ['#8b8b8b'] * (len(monthCount) - 1) + ['#e74c3c']
 

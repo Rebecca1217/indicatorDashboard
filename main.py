@@ -7,7 +7,8 @@ import numpy as np
 from public.getWindData import get_wind_data
 from public.getIndexPos import get_index_pos
 from public.getTradingDays import get_trading_days, get_trading_days2
-from public.getStockFundPos import get_stock_fund_pos
+# from public.getStockFundUniv import get_stock_fund_univ
+from public.attachSTKLabel import attach_stk_label
 from public.getSWComponent import get_component_SW
 from public.basicInfoSW import basic_info_SW
 from public.attachDateLabel import attach_date_label
@@ -72,26 +73,30 @@ marAmountTRatio.to_hdf('dataForPlot/marginTDData.hdf', key='marAmountTRatio', ty
 
 ############################################ 指数总交易量数据 ########################################
 # 从AIndexEODPrices读取的指数交易量数据，创业板指实际是创业板综，所以干脆都自己读成分股自己汇总
+tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w', format='table')
+tdDays60 = get_trading_days(datetime.datetime.strftime(pd.to_datetime(dateTo) - datetime.timedelta(160), '%Y%m%d'), dateTo)
+dateFrom60 = datetime.datetime.strftime(tdDays60.index[len(tdDays60) - 60], '%Y%m%d')
 
-tdDays20 = get_trading_days(datetime.datetime.strftime(pd.to_datetime(dateTo) - datetime.timedelta(60), '%Y%m%d'), dateTo)
-dateFrom20 = datetime.datetime.strftime(tdDays20.index[len(tdDays20) - 20], '%Y%m%d')
-
-# 这个可以直接读，不用自己算
-def get_index_amount(index_code, dateFrom, dateTo):
-    indexPos = get_index_pos(index_code, dateFrom, dateTo)
+# 这个可以直接读，不用自己算(直接读的有问题，还是自己算。。)
+def get_index_amount(indexCode, dateFrom, dateTo):
+    indexPos = get_index_pos(indexCode, dateFrom, dateTo)
     amount = indexPos.merge(tdAmount, how='left', left_index=True, right_index=True)
     res = amount.groupby('Date')['TD_Amount'].sum()
     res = pd.Series([int(round(x / 100000000, 0)) for x in res], index=res.index)
     return res
-
+# tdAmount = pd.read_hdf('tdAmount.hdf', key='tdAmount')
 # 上证综指成分股000001.SH
-tdAmountSH = get_index_amount('000001.SH', dateFrom20, dateTo)
+tdAmountSH = get_index_amount('000001.SH', dateFrom60, dateTo)
+tdAmountSH = tdAmountSH[tdAmountSH != 0] # 当天收盘前更新数据还没有
 # 沪深300成分股000300.SH
-tdAmount300 = get_index_amount('000300.SH', dateFrom20, dateTo)
+tdAmount300 = get_index_amount('000300.SH', dateFrom60, dateTo)
+tdAmount300 = tdAmount300[tdAmount300 != 0]
 # 中证500成分股000905.SH
-tdAmount500 = get_index_amount('000905.SH', dateFrom20, dateTo)
+tdAmount500 = get_index_amount('000905.SH', dateFrom60, dateTo)
+tdAmount500 = tdAmount500[tdAmount500 != 0]
 # 创业板指成分股399006.SZ
-tdAmountGEM = get_index_amount('399006.SZ', dateFrom20, dateTo)
+tdAmountGEM = get_index_amount('399006.SZ', dateFrom60, dateTo)
+tdAmountGEM = tdAmountGEM[tdAmountGEM != 0]
 tdAmountSH.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountSH', type='w')
 tdAmount300.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount300', type='w')
 tdAmount500.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmount500', type='w')
@@ -102,21 +107,28 @@ tdAmountGEM.to_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountGEM', type='w')
 # 选取股票型和偏股混合型基金
 # 问题：同一只基金的场内和场外是否需要只保留一个？
 # 日期序列就是年中和年末
-# @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里需要修改一下(改成季度就不能和分行业的放在一个表里了）
+# @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里分开处理，股票总仓位按季度频率，分行业的按照半年度频率
 dateFrom = '20100101'
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
-dateSeq = get_trading_days(dateFrom, dateTo)
-dateSeq['Year_Month'] = dateSeq.index.year * 100 + dateSeq.index.month
-fundUniv = get_stock_fund_pos(dateFrom, dateTo)   # 普通股票型+混合偏股型基金全集
+
+fundUniv = get_stock_fund_univ(dateFrom, dateTo)   # 普通股票型+混合偏股型基金全集
 # 构造年中和年末日期序列
-dateSeq = get_trading_days2(dateFrom, dateTo, 'halfyear')
-dateSeq = dateSeq[dateSeq['If_Halfyear_End']]
+dateSeqHY = get_trading_days2(dateFrom, dateTo, 'halfyear')
+dateSeqHY = dateSeqHY[dateSeqHY['If_Halfyear_End']]
 # 筛选年中和年末的基金universe  fundUnivHalfYear
-fundUnivHY = fundUniv[[x in dateSeq.index for x in fundUniv['Date']]].copy()
-fundUnivHY.reset_index(drop=True, inplace=True)
+fundUnivHY = dateSeqHY.merge(fundUniv, how='left', on='Date', validate='one_to_many')
+fundUnivHY.drop(['Halfyear_Label', 'If_Halfyear_End'], axis=1, inplace=True)
+
+# 季度日期序列
+dateSeqQ = get_trading_days2(dateFrom, dateTo, 'quarter')
+dateSeqQ = dateSeqQ[dateSeqQ['If_Quarter_End']]
+fundUnivQ = dateSeqQ.merge(fundUniv, how='left', on='Date', validate='one_to_many')
+fundUnivQ.drop(['Quarter_Label', 'If_Quarter_End'], axis=1, inplace=True)
+
 # 获取基金的仓位数据，join到univ上求均值即可
 sqlStr = 'select S_INFO_WINDCODE, F_PRT_ENDDATE, F_PRT_STOCKTONAV, F_PRT_NETASSET, F_PRT_STOCKVALUE from ' \
-         'ChinaMutualFundAssetPortfolio where F_PRT_ENDDATE >= {0} and F_PRT_ENDDATE <= {1}'.format(dateFrom, dateTo)
+         'ChinaMutualFundAssetPortfolio where F_PRT_ENDDATE >= {0} and F_PRT_ENDDATE <= {1}' \
+         'order by S_INFO_WINDCODE, F_PRT_ENDDATE'.format(dateFrom, dateTo)
 fundPosition = get_wind_data(sqlStr)
 fundPosition = pd.DataFrame(fundPosition, columns=['Fund_Code', 'Date', 'Stock_Pos', 'Fund_Value', 'Stk_Value'])
 fundPosition['Date'] = pd.to_datetime(fundPosition['Date'])
@@ -125,31 +137,36 @@ fundPosition['Stock_Pos'] = fundPosition['Stock_Pos'].astype(float)
 # Note: fundPosition的日期是报告日期，都是0630这种的，遇到0630不是交易日的就匹配不上 pd.merge_asof只能根据一个key，需要先split,比较麻烦
 # 按月份匹配，如果有多于1条的数据，则取日期最新的
 fundPosition['Month_Label'] = [x.year * 100 + x.month for x in fundPosition['Date']]
-fundUnivHY['Month_Label'] = [x.year * 100 + x.month for x in fundUnivHY['Date']]
+fundUnivQ['Month_Label'] = [x.year * 100 + x.month for x in fundUnivQ['Date']]
 fundPosition.drop_duplicates(['Fund_Code', 'Month_Label'], keep='last', inplace=True)
-fundPosUniv = fundUnivHY.merge(fundPosition, how='left', on=['Month_Label', 'Fund_Code'], validate='one_to_one')
+fundPosUnivQ = fundUnivQ.merge(fundPosition, how='left', on=['Month_Label', 'Fund_Code'], validate='one_to_one')
 #  去掉仓位低于40%的，这种一般是在建仓期
-fundPosUniv = fundPosUniv[(fundPosUniv['Stock_Pos'] >= 40) | (np.isnan(fundPosUniv['Stock_Pos']))].copy()
-fundPosUniv.sort_values(['Date_x', 'Fund_Code'], inplace=True)
-fundPosTotal = fundPosUniv.groupby('Date_x')['Stock_Pos'].mean()
-fundPosTotal.index.names = ['Date']  # 这个总数据没有日期问题，只要有数据的一定是全的，不会只是前10名仓位
+fundPosUnivQ = fundPosUnivQ[(fundPosUnivQ['Stock_Pos'] >= 40) | (np.isnan(fundPosUnivQ['Stock_Pos']))].copy()
+fundPosUnivQ.sort_values(['Date_x', 'Fund_Code'], inplace=True)
+fundPosTotalQ = fundPosUnivQ.groupby('Date_x')['Stock_Pos'].mean()
+fundPosTotalQ.index.names = ['Date']  # 这个总数据没有日期问题，只要有数据的一定是全的，不会只是前10名仓位
 
+fundPosTotalHY = dateSeqHY.merge(fundPosTotalQ, how='left', on='Date')
+fundPosTotalHY.drop(['Halfyear_Label', 'If_Halfyear_End'], axis=1, inplace=True)
 # 基金持仓的分行业仓位  季报公布的是证监会分类标准，所以这里用底仓自己计算
 # 分行业持仓，最新一期的有的基金公布年报，有的只公布的四季报，这种需要处理，处理时间？？？？？？？？？
 # 基金net asset要直接读，不能用行业仓位反除，四舍五入不准
-# 先筛选出股票型+偏股型基金的底仓，重复的只保留最新
+# 先筛选出股票型+偏股型基金的底仓，重复的只保留最新  类别code和名称对应表：AShareIndustriesCode，参考用，查询数据不需要这个表
+import time
+tic = time.time()
 sqlStr = 'select c.S_INFO_WINDCODE, S_INFO_STOCKWINDCODE, c.F_PRT_ENDDATE, F_PRT_STKVALUE, F_PRT_STKVALUETONAV, ' \
          'd.f_prt_netasset from ChinaMutualFundStockPortfolio c ' \
          'left join ChinaMutualFundAssetPortfolio d ' \
          'on c.S_INFO_WINDCODE = d.S_INFO_WINDCODE and c.F_PRT_ENDDATE = d.F_PRT_ENDDATE ' \
          'where c.S_INFO_WINDCODE in (' \
-         'select  a.F_INFO_WINDCODE from ChinaMutualFundSector a ' \
-         'inner join AShareIndustriesCode b ' \
-         'on a.S_INFO_SECTOR=b.INDUSTRIESCODE ' \
+         'select  F_INFO_WINDCODE from ChinaMutualFundSector '\
          'where a.S_INFO_SECTOR in (\'2001010201000000\', \'2001010101000000\')) and ' \
          'month(c.f_prt_enddate) in (6, 12) ' \
          'and c.F_PRT_ENDDATE >= {0} and c.F_PRT_ENDDATE <= {1}'.format(dateFrom, dateTo)
+
 fundPosDetail = get_wind_data(sqlStr)  # 这样筛出来的是整个过程中在股票型基金中出现过的基金，没有对应时间，需要再对应一次
+toc = time.time()
+print("程序运行时间：%.8s s" % (toc-tic))
 # 直接用一个sql语句不好写，因为entrydate exitdate一个基金对应多条数据，leftjoin 都给弄上了不好汇总
 # 这里面也有同一个报告期出现两次的，数据不一样，以最新日期为准，例如160512.SZ在20110623和20110630的两次只取20110630
 fundPosDetail = pd.DataFrame(fundPosDetail, columns=['Fund_Code', 'Stock_Code', 'Date', 'Stk_Values', 'Stk_Pct', 'Fund_Value'])
@@ -160,9 +177,8 @@ halfYearDate = pd.DataFrame(fundPosDetail['Date'].unique(), columns=['Date'])
 halfYearDate['Month_Label'] = [x.year * 100 + x.month for x in halfYearDate['Date']]
 halfYearDate.sort_values(['Date'], inplace=True)
 halfYearDate.drop_duplicates(['Month_Label'], keep='last', inplace=True)
-# tmp = fundPosDetail[[x in set(halfYearDate['Date']) for x in fundPosDetail['Date']]].copy() # 奇怪这个地方如果不加set就都是FALSE
+# tmp = fundPosDetail[[x in set(halfYearDate['Date']) for x in fundPosDetail['Date']]].copy() # 奇怪这个地方如果不加set就都是FALSE，而且这种筛选方式太慢
 # https://stackoverflow.com/questions/48553824/checking-if-a-date-falls-in-a-dataframe-pandas
-# 不要这么筛选，太慢了。。。日期格式尤其慢。。
 halfYearDate['Valid'] = True
 fundPosDetail = fundPosDetail.merge(halfYearDate[['Date', 'Valid']], on = 'Date', how='left')
 fundPosDetail.loc[pd.isnull(fundPosDetail['Valid']), 'Valid'] = False
@@ -172,9 +188,6 @@ fundPosDetail['Month_Label'] = [x.year * 100 + x.month for x in fundPosDetail['D
 fundPosDetail = fundUnivHY.merge(fundPosDetail, how='left', on=['Month_Label', 'Fund_Code'], validate='one_to_many') # Date_x是交易日,Date_y是报告日
 fundPosDetail = fundPosDetail[['Date_x', 'Fund_Code', 'Stock_Code', 'Stk_Values', 'Fund_Value']]
 fundPosDetail.columns = ['Date', 'Fund_Code', 'Stock_Code', 'Stk_Values', 'Fund_Value']
-#   到目前为止，还没有剔除过程中才进来或者中途出去的基金，需要再match一步
-#  为了严谨做这一步，事实上这部分stockPortfolio表绝大部分也没数据，对结果应该没影响
-#  没有的，中间往fundUnivHY上merge就是全部有效的底仓，不需要再match了
 
 
 #  贴行业标签计算行业权重
@@ -193,10 +206,10 @@ fundPosSector = fundPosSector.merge(swPara[['SW_Code', 'SW_Name']], how='left', 
 
 # 怎么判断当前的最新一期是否已经更新完数据，通过时间无法判断，只能通过结果反推，如果底仓汇总的结果和总数差异过大(>3%)，就说明还没更新完
 # 汇总的时候不要用行业汇总，直接用底仓汇总(事实上就算<3%了，一段时间应该也会继续更新缩小，diff最终应该小于1%)
-diff = (fundPosDetail.groupby(['Date'])['Stk_Values'].sum() / totalNav['Fund_Value']) * 100 - fundPosTotal.values
+diff = (fundPosDetail.groupby(['Date'])['Stk_Values'].sum() / totalNav['Fund_Value']) * 100 - fundPosTotalHY.values
 if abs(diff[-1]) > 3:
     fundPosSector = fundPosSector[fundPosSector.index <= fundPosSector.index.unique()[-2]]
-    fundPosTotal = fundPosTotal[fundPosTotal.index <= fundPosTotal.index.unique()[-2]]
+    fundPosTotal = fundPosTotalHY[fundPosTotalHY.index <= fundPosTotalHY.index.unique()[-2]]
 assert all(fundPosSector.index.unique() == fundPosTotal.index.unique())
 # 总仓位和各行业配置比例变动，输出表格结果
 currPeriod = fundPosSector.index.unique()[-1]
@@ -222,30 +235,6 @@ sectorPctTable.to_hdf('dataForPlot/fundPosData.hdf', key='sectorPctTable', type=
 posTable.to_hdf('dataForPlot/fundPosData.hdf', key='posTable', type='w', format='table')
 
 
-# # 核对计算明细后的仓位和直接读取的仓位差异在哪  直接读取的仓位是各基金的仓位均值，不是sum(A)/sum(B) 而是 mean(A/B)
-# tmp = fundPosSector.groupby('Date')['SW_Pct'].sum()
-# tmp.values * 100 - fundPosTotal.values
-# # 以20191231为例，计算如果sum(A)/sum(B)的总仓位应该是多少,是80吗？基金仓位的平均是88左右,不是80， 是88左右，说明分行业的数不对
-# #
-#
-# tstDate = pd.to_datetime('20191231')
-# total20170630 = fundPosUniv[fundPosUniv['Date_x'] == tstDate]  #
-# total20170630['Stock_Pos'].mean() # 86.33208927259359
-# total20170630['Stk_Value'].sum() / total20170630['Fund_Value'].sum()  # 0.872698 # 这种计算不合适，因为nan/sum会排除，但分开计算就没有排除
-# print(total20170630['Stk_Value'].sum()) # 1316306935113
-# print(total20170630['Fund_Value'].sum()) # 1508318851764
-# stkDetail = fundPosDetail[fundPosDetail['Date'] == tstDate]
-# stkDetail['Stk_Values'].sum()  # 千亿级别 差137万，可以忽略
-# fundValue = stkDetail.drop_duplicates(['Date', 'Fund_Code'])
-# fundValue['Fund_Value'].sum()  # 总数也有差别，为什么会少一些？fundPosDetail的总市值比fundPosUniv(106)的少
-# # 因为fundPosDetail有空值，一些新发基金，有总市值，但没有明细底仓数据
-# print(stkDetail['Stk_Values'].sum() / fundValue['Fund_Value'].sum() ) # 84.10 本身没问题，看分行业汇总是不是少很多
-# # 是的
-# stkDetail[pd.isnull(stkDetail['SW_Code'])]['Stk_Values'].sum() / fundValue['Fund_Value'].sum()   # 5.04% 差异在于一些港股，一些股票换行业过渡期缺失行业标签
-# stkDetail[~pd.isnull(stkDetail['SW_Code'])]['Stk_Values'].sum() / fundValue['Fund_Value'].sum()  # 79.06%
-#
-#
-#
 #############################################新发基金#################################################
 dateFrom = '20150101'  # 最终只取过去3年数据
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
@@ -255,17 +244,25 @@ dateSeq = attach_date_label(dateSeq, 'week')
 weekSeq = dateSeq[dateSeq['If_Week_End']]
 monthSeq = dateSeq[dateSeq['If_Month_End']]  # 这是全部的时间，后面把新发基金的数据merge到这个时间上
 
-sqlStr = 'select  a.F_INFO_WINDCODE, F_INFO_SETUPDATE, c.F_ISSUE_TOTALUNIT * c.F_INFO_PARVALUE * 100000000 as ' \
-         'Collection from ChinaMutualFundSector a ' \
-         'inner join AShareIndustriesCode b on a.S_INFO_SECTOR=b.INDUSTRIESCODE ' \
-         'left join ChinaMutualFundDescription c ' \
-         'on a.F_INFO_WINDCODE = c.F_INFO_WINDCODE ' \
-         'where a.S_INFO_SECTOR in (\'2001010201000000\', \'2001010101000000\')'
+sqlStr = 'select a.F_INFO_WINDCODE, b.S_INFO_SECTOR, F_INFO_SETUPDATE, ' \
+         'a.F_ISSUE_TOTALUNIT * a.F_INFO_PARVALUE as Collection, ' \
+         'F_INFO_BENCHMARK  from ChinaMutualFundDescription a ' \
+         'left join ChinaMutualFundSector b ' \
+         'on a.F_INFO_WINDCODE = b.F_INFO_WINDCODE ' \
+         'where b.S_INFO_SECTOR in ' \
+         '(\'2001010201000000\', \'2001010101000000\', \'2001010204000000\')'
 
 stkFund = get_wind_data(sqlStr)
-stkFund = pd.DataFrame(stkFund, columns=['Fund_Code', 'Setup_Date', 'Collection'])
+stkFund = pd.DataFrame(stkFund, columns=['Fund_Code', 'Info_Sector', 'Setup_Date', 'Collection', 'Bchmk'])
 stkFund['Setup_Date'] = pd.to_datetime(stkFund['Setup_Date'])
 stkFund['Collection'] = stkFund['Collection'].astype(float)
+
+stkFundStk = stkFund[stkFund['Info_Sector'] != '2001010204000000']
+stkFundMix = stkFund[stkFund['Info_Sector'] == '2001010204000000']
+stkFundMix = attach_stk_label(stkFundMix)[0]
+stkFundMix.drop('Stk_Weight', axis=1, inplace=True)
+stkFund = pd.concat([stkFundStk, stkFundMix], axis=0, ignore_index=True)
+
 stkFund.sort_values('Setup_Date', inplace=True)
 stkFund['Date'] = stkFund['Setup_Date']
 stkFund.set_index('Date', inplace=True)
@@ -294,8 +291,8 @@ res1 = weekCount['Collection'][-1]
 res2 = monthCount['Collection'][-1]
 res3 = weekCount['Collection'].rank()[-1] / len(weekCount)
 res4 = monthCount['Collection'].rank()[-1] / len(monthCount)
-fundRes = pd.DataFrame({'上周新发规模': '{:.1f}亿'.format(res1/100000000),
-                        '上月新发规模': '{:.1f}亿'.format(res2/100000000),
+fundRes = pd.DataFrame({'上周新发规模': '{:.1f}亿'.format(res1),
+                        '上月新发规模': '{:.1f}亿'.format(res2),
                         '上周新发规模分位数': '{:.1%}'.format(res3),
                         '上月新发规模分位数': '{:.1%}'.format(res4)},
                         index=['value'])
