@@ -6,8 +6,9 @@ from public.attachSTKLabel import attach_stk_label
 
 # @2020.04.12这个函数暂时不调整，因为ChinaMutualFundNAV基金缺失一些日期
 
-def get_stock_fund_univ(dateFrom, dateTo):
+def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
     # 2001010201000000 偏股混合型, 2001010101000000 普通股票型, 2001010204000000 灵活配置型
+    # ifFlexible = True表示否包含灵活配置型中的实际偏股型基金
     # 这个地方从ChinaMutualFundDescription还是从ChinaMutualFundSector读取作为table a都没关系
     # 结果是一样的，因为之前不涉及读取bchmk的数据所以直接从表ChinaMutualFundSector读的
     sqlStr = 'select a.F_INFO_WINDCODE, b.S_INFO_SECTORENTRYDT, b.S_INFO_SECTOREXITDT, ' \
@@ -27,11 +28,13 @@ def get_stock_fund_univ(dateFrom, dateTo):
 
     # 对零配型基金贴偏股或非偏股标签，把零配中的非股票先排除，再进行后面的时间对应操作
     fundInfoStk = fundInfo[fundInfo['Info_Sector'] != '2001010204000000']
-    fundInfoMix = fundInfo[fundInfo['Info_Sector'] == '2001010204000000']
-    fundInfoMix = attach_stk_label(fundInfoMix)[0]
-    fundInfoMix.drop('Stk_Weight', axis=1, inplace=True)
-
-    fundInfo = pd.concat([fundInfoStk, fundInfoMix], axis=0, ignore_index=True)
+    if ifFlexible:
+        fundInfoMix = fundInfo[fundInfo['Info_Sector'] == '2001010204000000']
+        fundInfoMix = attach_stk_label(fundInfoMix)[0]
+        fundInfoMix.drop('Stk_Weight', axis=1, inplace=True)
+        fundInfo = pd.concat([fundInfoStk, fundInfoMix], axis=0, ignore_index=True)
+    else:
+        fundInfo = fundInfoStk.copy()
 
     if len(fundInfo) > 0:
         days = get_trading_days(dateFrom, dateTo)
