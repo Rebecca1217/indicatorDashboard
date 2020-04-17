@@ -177,10 +177,11 @@ tdAmountGEM.to_hdf(
 # 问题：同一只基金的场内和场外是否需要只保留一个？
 # 日期序列就是年中和年末
 # @2020.04.03基金总股票仓位数据是每季度公布的，持股明细才是半年度，这里分开处理，股票总仓位按季度频率，分行业的按照半年度频率
+# @2020.04.17半年度的基金行业持仓，增加Bchmk对比
 dateFrom = '20100101'
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
 
-def get_fund_pos(dateFrom, dateTo, ifFlexible):
+def get_fund_pos(dateFrom, dateTo, ifFlexible, bchmkCode):
     fundUniv = get_stock_fund_univ(
         dateFrom, dateTo, ifFlexible)  # 普通股票型+混合偏股型基金全集
     # 构造年中和年末日期序列
@@ -336,6 +337,23 @@ def get_fund_pos(dateFrom, dateTo, ifFlexible):
     fundPosSector = fundPosSector.merge(
         swPara[['SW_Code', 'SW_Name']], how='left', on='SW_Code').set_index(fundPosSector.index)
 
+    # @2020.04.17 添加Bchmk权重
+    sqlStr = 'select S_CON_WINDCODE, TRADE_DT, I_WEIGHT from ' \
+             'AIndexHS300FreeWeight where S_INFO_WINDCODE = \'{0}\' and TRADE_DT >= {1} and ' \
+             'TRADE_DT <= {2}'.format(bchmkCode,
+                                      datetime.datetime.strftime(fundPosSector.index.min(), '%Y%m%d'),
+                                      datetime.datetime.strftime(fundPosSector.index.max(), '%Y%m%d'))
+    bchmkW = get_data_sql(sqlStr, 'wind')
+    bchmkW = pd.DataFrame(bchmkW, columns=['Stock_Code', 'Date', 'Bchmk_W'])
+    bchmkW['Date'] = pd.to_datetime(bchmkW['Date'])
+    bchmkW['Bchmk_W'] = bchmkW['Bchmk_W'].astype(float)
+    bchmkW = bchmkW.merge(swComponent, how='left', on=['Date', 'Stock_Code'])
+    bchmkW = pd.DataFrame(bchmkW.groupby(['Date', 'SW_Code'])['Bchmk_W'].sum() / 100)
+
+    fundPosSector = fundPosSector.merge(bchmkW, how='left', on=['Date', 'SW_Code'])
+    fundPosSector['Bchmk_W'] = fundPosSector['Bchmk_W'].fillna(0)
+
+
     # 怎么判断当前的最新一期是否已经更新完数据，通过时间无法判断，只能通过结果反推，如果底仓汇总的结果和总数差异过大(>3%)，就说明还没更新完
     # 汇总的时候不要用行业汇总，直接用底仓汇总(事实上就算<3%了，一段时间应该也会继续更新缩小，diff最终应该小于1%)
     diff = pd.Series(fundPosDetail.groupby(['Date'])['Stk_Values'].sum() / totalNav['Fund_Value']) * 100 -\
@@ -354,29 +372,41 @@ def get_fund_pos(dateFrom, dateTo, ifFlexible):
         columns=fundPosSector.index,
         values='SW_Pct',
         aggfunc='first')
+    bchmkPctTable = fundPosSector.pivot_table(
+        index='SW_Name',
+        columns=fundPosSector.index,
+        values='Bchmk_W',
+        aggfunc='first'
+    )
+    assert all(sectorPctTable.index == bchmkPctTable.index) and all(sectorPctTable.columns == bchmkPctTable.columns)
+    excessPctTable = sectorPctTable - bchmkPctTable
     # 本期 、本期相对上期变化，最终只显示当前还在用的行业
     sectorPctTable = sectorPctTable.merge(swPara.loc[swPara['Used_Label'] == 1, [
                                           'SW_Name', 'Used_Label']], how='left', on='SW_Name')
     sectorPctTable.sort_values(
         ['Used_Label', 'SW_Name'], ascending=False, inplace=True)  # 把已经不用的行业放在最下面
     sectorPctTable.reset_index(drop=True, inplace=True)  # 历史仓位变化图
+    excessPctTable = excessPctTable.reindex(sectorPctTable['SW_Name'])
 
     sectorPctTableCurr = sectorPctTable[[
         'SW_Name', lastPeriod, currPeriod, 'Used_Label']].copy()
+    bchmkPctTableCurr = excessPctTable[[lastPeriod, currPeriod]].copy()
+    bchmkPctTableCurr.columns = ['上期超配', '本期超配']
+    sectorPctTableCurr.rename(columns={lastPeriod:'上期仓位', currPeriod:'本期仓位'}, inplace=True)
+    bchmkPctTableCurr.reset_index(drop=True, inplace=True)
+    sectorPctTableCurr = pd.concat([sectorPctTableCurr, bchmkPctTableCurr], axis=1)
     sectorPctTableCurr = sectorPctTableCurr[sectorPctTableCurr['Used_Label'] == 1]
     del sectorPctTableCurr['Used_Label']
-    # 把总仓位加在最上面一排一起计算  本期和上期仓位变化这个表就不显示已经废弃的行业了
-    totalPctCurr = pd.DataFrame(fundPosTotal).transpose()[
-        [lastPeriod, currPeriod]] / 100
-    totalPctCurr['SW_Name'] = '总仓位'
-    totalPctCurr = totalPctCurr[['SW_Name', lastPeriod, currPeriod]]
-    posTable = pd.concat([totalPctCurr, sectorPctTableCurr],
-                         axis=0).reset_index(drop=True)
-    posTable['Delta'] = posTable[currPeriod] - posTable[lastPeriod]
+    # 本期和上期仓位变化这个表就不显示已经废弃的行业了
+    # 总仓位就单独看，不和行业合到一个表了
+    posTable = sectorPctTableCurr.copy()
+    posTable['Delta'] = posTable['本期仓位'] - posTable['上期仓位']
+    posTable['Delta_B'] = posTable['本期超配'] - posTable['上期超配']
+
     del sectorPctTable['Used_Label']
     return [posTableT, posTable, sectorPctTable]
 
-fundPosData = get_fund_pos(dateFrom, dateTo, False)  # 目前暂时还不需要跑True
+fundPosData = get_fund_pos(dateFrom, dateTo, False, '000300.SH')  # 目前暂时还不需要跑True
 posTableT = fundPosData[0]
 posTable = fundPosData[1]
 sectorPctTable = fundPosData[2]

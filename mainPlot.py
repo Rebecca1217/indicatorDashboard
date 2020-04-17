@@ -226,13 +226,15 @@ table.scale(1, 0.8)
 ax.axis('off')
 plt.show()
 
-posTable.iloc[:, 1:4] = posTable.iloc[:, 1:4].apply(
+posTable = posTable[['SW_Name', '上期仓位', '本期仓位', 'Delta', '上期超配', '本期超配', 'Delta_B']]
+posTable.iloc[:, 1:7] = posTable.iloc[:, 1:7].apply(
     lambda x: ['{:.1%}'.format(e) for e in x])
-fig = plt.figure(dpi=120)
+fig = plt.figure(dpi=200)
 ax = fig.add_subplot(1, 1, 1)
 table_data = posTable.values
 table = ax.table(cellText=table_data,
-                 colLabels=['行业分类', '上期仓位', '本期仓位', '本期相对上期变化'],
+                 colLabels=['行业分类', '上期仓位', '本期仓位', '本期相对上期变化',
+                            '上期超配', '本期超配', '本期相对上期变化'],
                  loc='center')
 table.set_fontsize(10)
 table.scale(1, 0.8)
@@ -256,7 +258,6 @@ sns.heatmap(
     yticklabels=True)
 ax.set_yticklabels(ax.get_yticklabels(), size=8)
 ax.set_xticklabels(ax.get_xticklabels(), rotation=50, ha='right')
-
 plt.ylabel('')
 plt.title('权益类基金行业仓位历史分布图')
 plt.show()
