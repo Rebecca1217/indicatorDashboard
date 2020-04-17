@@ -15,7 +15,6 @@ from public.basicInfoSW import basic_info_SW
 from public.attachDateLabel import attach_date_label
 import datetime
 
-
 ############################################ 融资融券数据 ######################
 # 目前只需要两融余额总量、融资买入额这两个数据
 dateFrom = '20100331'
@@ -131,7 +130,7 @@ tdDays60 = get_trading_days(
 dateFrom60 = datetime.datetime.strftime(
     tdDays60.index[len(tdDays60) - 60], '%Y%m%d')
 
-# 这个可以直接读，不用自己算(直接读的有问题，还是自己算。。)
+# 这个不建议用Wind指数交易的表直接读取，那个数有些口径不对，创业板指提供的实际是创业板综
 
 def get_index_amount(indexCode, dateFrom, dateTo):
     indexPos = get_index_pos(indexCode, dateFrom, dateTo)
@@ -141,7 +140,7 @@ def get_index_amount(indexCode, dateFrom, dateTo):
         left_index=True,
         right_index=True)
     res = amount.groupby('Date')['TD_Amount'].sum()
-    res = pd.Series([int(round(x / 100000000, 0))
+    res = pd.Series([int(round(x / 1e8, 0))
                      for x in res], index=res.index)
     return res
 
@@ -381,32 +380,23 @@ fundPosData = get_fund_pos(dateFrom, dateTo, False)  # 目前暂时还不需要�
 posTableT = fundPosData[0]
 posTable = fundPosData[1]
 sectorPctTable = fundPosData[2]
-posTableT.to_hdf(
-    'dataForPlot/fundPosData.hdf',
-    key='posTableT',
-    type='w',
-    format='table')
-posTable.to_hdf(
-    'dataForPlot/fundPosData.hdf',
-    key='posTable',
-    type='w',
-    format='table')
-sectorPctTable.to_hdf(
-    'dataForPlot/fundPosData.hdf',
-    key='sectorPctTable',
-    type='w',
-    format='table')
+posTableT.to_hdf('dataForPlot/fundPosData.hdf', key='posTableT', type='w', format='table')
+posTable.to_hdf('dataForPlot/fundPosData.hdf', key='posTable', type='w', format='table')
+sectorPctTable.to_hdf('dataForPlot/fundPosData.hdf', key='sectorPctTable', type='w', format='table')
 
-#############################################新发基金#########################
+######################################## 新发基金规模 ############################
 dateFrom = '20150101'  # 最终只取过去3年数据
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')
 
 def get_new_fund_amount(dateFrom, dateTo, ifFlexible):
-    dateSeq = get_trading_days(dateFrom, dateTo)
+    # 因为要求MA，所以时间往前错一点
+    dateFromTemp = datetime.datetime.strftime(pd.to_datetime(dateFrom) - datetime.timedelta(50), '%Y%m%d')
+    dateSeq = get_trading_days(dateFromTemp, dateTo)
     dateSeq = attach_date_label(pd.DataFrame(dateSeq), 'month')
     dateSeq = attach_date_label(dateSeq, 'week')
     weekSeq = dateSeq[dateSeq['If_Week_End']]
     # 这是全部的时间，后面把新发基金的数据merge到这个时间上
+    # 这个周度和月度是自然周和自然月，只在计算MA的分位数时候作为基准用
     monthSeq = dateSeq[dateSeq['If_Month_End']]
 
     sqlStr = 'select a.F_INFO_WINDCODE, b.S_INFO_SECTOR, F_INFO_SETUPDATE, ' \
@@ -420,12 +410,7 @@ def get_new_fund_amount(dateFrom, dateTo, ifFlexible):
     stkFund = get_wind_data(sqlStr)
     stkFund = pd.DataFrame(
         stkFund,
-        columns=[
-            'Fund_Code',
-            'Info_Sector',
-            'Setup_Date',
-            'Collection',
-            'Bchmk'])
+        columns=['Fund_Code', 'Info_Sector', 'Setup_Date', 'Collection', 'Bchmk'])
     stkFund['Setup_Date'] = pd.to_datetime(stkFund['Setup_Date'])
     stkFund['Collection'] = stkFund['Collection'].astype(float)
 
@@ -454,16 +439,16 @@ def get_new_fund_amount(dateFrom, dateTo, ifFlexible):
         pd.DataFrame(weekCount),
         how='left',
         on='Week_Label').set_index(
-        weekSeq.index)
+        weekSeq.index)  # 做这一步merge因为有的周没有数据，应该取0处理，月度也需要（虽然月度还没有0的情况）
     # 这里merge完了Week_Label不知怎么就变成object了，需要调整一下，不然存hdf会报警告
-    weekCount['Week_Label'] = weekCount['Week_Label'].astype(int)
+    # weekCount['Week_Label'] = weekCount['Week_Label'].astype(int)
     weekCount = weekCount[['Week_Label', 'Collection']]
     monthCount = monthSeq.merge(
         pd.DataFrame(monthCount),
         how='left',
         on='Month_Label').set_index(
         monthSeq.index)
-    monthCount['Month_Label'] = monthCount['Month_Label'].astype(int)
+    # monthCount['Month_Label'] = monthCount['Month_Label'].astype(int)
     monthCount = monthCount[['Month_Label', 'Collection']]
     weekCount['Collection'] = weekCount['Collection'].fillna(0)
     monthCount['Collection'] = monthCount['Collection'].fillna(0)
@@ -472,30 +457,55 @@ def get_new_fund_amount(dateFrom, dateTo, ifFlexible):
     dateFrom3Year = datetime.datetime.strftime(
         pd.to_datetime(dateTo) - datetime.timedelta(365 * 3), '%Y%m%d')
     weekCount = weekCount[weekCount.index >= pd.to_datetime(dateFrom3Year)]
-    monthCount = monthCount[monthCount.index >= pd.to_datetime(dateFrom3Year)]
+    monthCount = monthCount[monthCount.index >= pd.to_datetime(dateFrom3Year)] # 求MA所处分位数的基准序列 画图（除最后一跟MA柱以外的部分）
+    # 下面求5天MA和20天MA
+    stkFundSum = stkFund.groupby('Date')['Collection'].sum()
+    stkFundSum = dateSeq.merge(stkFundSum, how='left', on='Date')
+    stkFundSum = pd.DataFrame(stkFundSum['Collection'])
+    stkFundSum['Collection'] = stkFundSum['Collection'].fillna(0)
+
+    stkFundSum['MA_5'] = stkFundSum['Collection'].rolling(window=5, min_periods=5).sum()
+    stkFundSum['MA_20'] = stkFundSum['Collection'].rolling(window=20, min_periods=20).sum()
+
+    # 用来画柱状图的序列
+    if stkFundSum.index[-1] > weekCount.index[-1]:
+        weekCount = pd.concat([weekCount[['Collection']],
+                                pd.DataFrame(stkFundSum.iloc[len(stkFundSum) - 1, :]).transpose()[['MA_5']].rename(columns={'MA_5':'Collection'})], axis=0)
+    else:
+        weekCount = weekCount[['Collection']]
+    if stkFundSum.index[-1] > monthCount.index[-1]:
+        monthCount = pd.concat([monthCount[['Collection']],
+                                pd.DataFrame(stkFundSum.iloc[len(stkFundSum) - 1, :]).transpose()[['MA_20']].rename(columns={'MA_20':'Collection'})], axis=0)
+    else:
+        monthCount = monthCount[['Collection']]
 
     # 输出4个数值：过去一周和一月新发规模数据（两个数值）和对应在过去三年上的历史分位数（两个数值）
-    res1 = weekCount['Collection'][-1]
-    res2 = monthCount['Collection'][-1]
-    res3 = weekCount['Collection'].rank()[-1] / len(weekCount)
-    res4 = monthCount['Collection'].rank()[-1] / len(monthCount)
-    fundRes = pd.DataFrame({'上周新发规模': '{:.1f}亿'.format(res1),
-                            '上月新发规模': '{:.1f}亿'.format(res2),
-                            '上周新发规模分位数': '{:.1%}'.format(res3),
-                            '上月新发规模分位数': '{:.1%}'.format(res4)},
+    res1 = stkFundSum['MA_5'][-1]
+    res2 = stkFundSum['MA_20'][-1]
+    res3 = weekCount['Collection'].rank(pct=True)[-1]
+    res4 = monthCount['Collection'].rank(pct=True)[-1]
+    fundRes = pd.DataFrame({'过去一周新发规模': '{:.1f}亿'.format(res1),
+                            '过去一月新发规模': '{:.1f}亿'.format(res2),
+                            '过去一周新发规模分位数': '{:.1%}'.format(res3),
+                            '过去一月新发规模分位数': '{:.1%}'.format(res4)},
                            index=['value'])
     return [fundRes, weekCount, monthCount]
 
-
-newFundData = get_new_fund_amount(dateFrom, dateTo, True)
-fundRes = newFundData[0]
-weekCount = newFundData[1]
-monthCount = newFundData[2]
-fundRes.to_hdf('dataForPlot/newFundData.hdf', key='fundRes', type='w')
-weekCount.to_hdf('dataForPlot/newFundData.hdf', key='weekCount', type='w')
-monthCount.to_hdf('dataForPlot/newFundData.hdf', key='monthCount', type='w')
-
-###############################################IPO规模######################
+newFundDataExcl = get_new_fund_amount(dateFrom, dateTo, False)
+newFundDataIncl = get_new_fund_amount(dateFrom, dateTo, True)
+fundResExcl = newFundDataExcl[0]
+weekCountExcl = newFundDataExcl[1]
+monthCountExcl = newFundDataExcl[2]
+fundResIncl = newFundDataIncl[0]
+weekCountIncl = newFundDataIncl[1]
+monthCountIncl = newFundDataIncl[2]
+fundResExcl.to_hdf('dataForPlot/newFundData.hdf', key='fundResExcl', type='w')
+weekCountExcl.to_hdf('dataForPlot/newFundData.hdf', key='weekCountExcl', type='w')
+monthCountExcl.to_hdf('dataForPlot/newFundData.hdf', key='monthCountExcl', type='w')
+fundResIncl.to_hdf('dataForPlot/newFundData.hdf', key='fundResIncl', type='w')
+weekCountIncl.to_hdf('dataForPlot/newFundData.hdf', key='weekCountIncl', type='w')
+monthCountIncl.to_hdf('dataForPlot/newFundData.hdf', key='monthCountIncl', type='w')
+###############################################IPO规模###############################
 
 dateFrom = '20150101'  # 最终只取过去3年数据
 dateTo = datetime.datetime.strftime(datetime.datetime.today(), '%Y%m%d')

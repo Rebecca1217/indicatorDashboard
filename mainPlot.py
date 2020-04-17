@@ -162,7 +162,6 @@ def pie_plot(plotData, plotTitle):
     plt.show()
     return
 
-
 pie_plot(pieData, '两市融资融券余额占比')
 
 ################################################# 指数成交量柱状图  ##############
@@ -186,7 +185,6 @@ def plot_index_tdAmount(plotData, plotTitle):
     plt.title(plotTitle)
     plt.show()
     return
-
 
 tdAmountSH = pd.read_hdf('dataForPlot/indexTDAmount.hdf', key='tdAmountSH')
 plot_index_tdAmount(tdAmountSH, '上证综指近60交易日成交量（亿）')
@@ -264,62 +262,69 @@ plt.title('权益类基金行业仓位历史分布图')
 plt.show()
 
 ################################################ 新发基金 ####################
-weekCount = pd.read_hdf('dataForPlot/newFundData.hdf', key='weekCount')
-monthCount = pd.read_hdf('dataForPlot/newFundData.hdf', key='monthCount')
-fundRes = pd.read_hdf('dataForPlot/newFundData.hdf', key='fundRes')
-#  输出四个值的表格
-fig = plt.figure(dpi=80)
-ax = fig.add_subplot(1, 1, 1)
-table_data = fundRes.values
-table = ax.table(cellText=table_data, colLabels=fundRes.columns, loc='center')
-table.set_fontsize(14)
-table.scale(1, 4)
-ax.axis('off')
-plt.show()
-# 柱状图
-del weekCount['Week_Label'], monthCount['Month_Label']
-weekCount.index = [pd.to_datetime(str(x)).strftime(
-    '%Y/%m/%d') for x in weekCount.index.get_level_values('Date')]
-monthCount.index = [pd.to_datetime(str(x)).strftime(
-    '%Y/%m') for x in monthCount.index.get_level_values('Date')]
-weekCount['Collection'] = weekCount['Collection']
-monthCount['Collection'] = monthCount['Collection']
-weekColor = ['#8b8b8b'] * (len(weekCount) - 1) + ['#e74c3c']
-monthColor = ['#8b8b8b'] * (len(monthCount) - 1) + ['#e74c3c']
+weekCountExcl = pd.read_hdf('dataForPlot/newFundData.hdf', key='weekCountExcl')
+monthCountExcl = pd.read_hdf('dataForPlot/newFundData.hdf', key='monthCountExcl')
+fundResExcl = pd.read_hdf('dataForPlot/newFundData.hdf', key='fundResExcl')
+weekCountIncl = pd.read_hdf('dataForPlot/newFundData.hdf', key='weekCountIncl')
+monthCountIncl = pd.read_hdf('dataForPlot/newFundData.hdf', key='monthCountIncl')
+fundResIncl = pd.read_hdf('dataForPlot/newFundData.hdf', key='fundResIncl')
+def plot_new_fund(fundRes, weekCount, monthCount):
+    fig = plt.figure(dpi=120)
+    ax = fig.add_subplot(1, 1, 1)
+    table_data = fundRes.values
+    table = ax.table(cellText=table_data, colLabels=fundRes.columns, loc='center')
+    table.set_fontsize(14)
+    table.scale(1, 4)
+    ax.axis('off')
+    plt.show()
+    # 柱状图
+    # del weekCount['Week_Label'], monthCount['Month_Label']
+    weekCount.index = [pd.to_datetime(str(x)).strftime(
+        '%Y/%m/%d') for x in weekCount.index]
+    monthCount.index = [pd.to_datetime(str(x)).strftime(
+        '%Y/%m') for x in monthCount.index]
+    # weekCount['Collection'] = weekCount['Collection']
+    # monthCount['Collection'] = monthCount['Collection']
+    weekColor = ['#8b8b8b'] * (len(weekCount) - 1) + ['#e74c3c']
+    monthColor = ['#8b8b8b'] * (len(monthCount) - 1) + ['#e74c3c']
 
-# 新发基金周度柱状图
-fig, ax = plt.subplots()
-plt.bar(list(range(len(weekCount))), weekCount['Collection'].values,
-        tick_label=weekCount.index, color=weekColor, width=0.5)
-ax.set_xticklabels(weekCount.index, rotation=90, ha="right")
-marker = weekCount.iloc[-1, weekCount.columns.get_loc('Collection')]
-ax.text(len(weekCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
-tickNum = 10
-xTicks = [int(round(x, 0)) for x in np.linspace(
-    0, len(weekCount.index) - 1, tickNum, endpoint=True)]
-xTicksLabel = weekCount.index[xTicks]
-ax.set_xticks(xTicks)
-# xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
-ax.set_xticklabels(xTicksLabel, rotation=50, ha="right")
-plt.title('近3年周度新发基金规模（亿）')
-plt.show()
+    # 新发基金周度柱状图
+    fig, ax = plt.subplots()
+    plt.bar(list(range(len(weekCount))), weekCount['Collection'].values,
+            tick_label=weekCount.index, color=weekColor, width=0.5)
+    ax.set_xticklabels(weekCount.index, rotation=90, ha="right")
+    marker = weekCount.iloc[-1, weekCount.columns.get_loc('Collection')]
+    ax.text(len(weekCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
+    tickNum = 10
+    xTicks = [int(round(x, 0)) for x in np.linspace(
+        0, len(weekCount.index) - 1, tickNum, endpoint=True)]
+    xTicksLabel = weekCount.index[xTicks]
+    ax.set_xticks(xTicks)
+    # xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+    ax.set_xticklabels(xTicksLabel, rotation=50, ha="right")
+    plt.title('近3年周度新发基金规模（亿）')
+    plt.show()
 
-# 新发基金月度柱状图
-fig, ax = plt.subplots()
-plt.bar(list(range(len(monthCount))), monthCount['Collection'].values,
-        tick_label=monthCount.index, color=monthColor, width=0.5)
-ax.set_xticklabels(monthCount.index, rotation=90, ha="right")
-marker = monthCount.iloc[-1, monthCount.columns.get_loc('Collection')]
-ax.text(len(monthCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
-tickNum = 10
-xTicks = [int(round(x, 0)) for x in np.linspace(
-    0, len(monthCount.index) - 1, tickNum, endpoint=True)]
-xTicksLabel = monthCount.index[xTicks]
-ax.set_xticks(xTicks)
-# xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
-ax.set_xticklabels(xTicksLabel, rotation=50, ha="right")
-plt.title('近3年月度新发基金规模（亿）')
-plt.show()
+    # 新发基金月度柱状图
+    fig, ax = plt.subplots()
+    plt.bar(list(range(len(monthCount))), monthCount['Collection'].values,
+            tick_label=monthCount.index, color=monthColor, width=0.5)
+    ax.set_xticklabels(monthCount.index, rotation=90, ha="right")
+    marker = monthCount.iloc[-1, monthCount.columns.get_loc('Collection')]
+    ax.text(len(monthCount) - 1.5, marker + 5, '{:.1f}'.format(marker))
+    tickNum = 10
+    xTicks = [int(round(x, 0)) for x in np.linspace(
+        0, len(monthCount.index) - 1, tickNum, endpoint=True)]
+    xTicksLabel = monthCount.index[xTicks]
+    ax.set_xticks(xTicks)
+    # xTicksLabel = [pd.to_datetime(str(x)).strftime('%Y/%m/%d') for x in xTicks]
+    ax.set_xticklabels(xTicksLabel, rotation=50, ha="right")
+    plt.title('近3年月度新发基金规模（亿）')
+    plt.show()
+    return
+
+plot_new_fund(fundResExcl, weekCountExcl, monthCountExcl)
+plot_new_fund(fundResIncl, weekCountIncl, monthCountIncl)
 
 ############################################ 月度IPO柱状图 ####################
 monthCountIPO = pd.read_hdf(

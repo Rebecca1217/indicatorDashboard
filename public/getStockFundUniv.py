@@ -6,6 +6,7 @@ from public.attachSTKLabel import attach_stk_label
 
 # @2020.04.12这个函数暂时不调整，因为ChinaMutualFundNAV基金缺失一些日期
 
+
 def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
     # 2001010201000000 偏股混合型, 2001010101000000 普通股票型, 2001010204000000 灵活配置型
     # ifFlexible = True表示否包含灵活配置型中的实际偏股型基金
@@ -20,9 +21,17 @@ def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
              'b.S_INFO_SECTORENTRYDT <= {0} and ' \
              '(b.S_INFO_SECTOREXITDT >= {1} or b.S_INFO_SECTOREXITDT is null) ' \
              'order by F_INFO_WINDCODE, S_INFO_SECTORENTRYDT'.format(dateTo, dateFrom)
-    #  entrydt is null and exitdt is null and cur_sign = 1这种都是只有个代码但还未成立的，没有其他数据就不用选出来了
+    # entrydt is null and exitdt is null and cur_sign =
+    # 1这种都是只有个代码但还未成立的，没有其他数据就不用选出来了
     fundInfo = get_wind_data(sqlStr)
-    fundInfo = pd.DataFrame(data=fundInfo, columns=['Fund_Code', 'Date_In', 'Date_Out', 'Info_Sector', 'Bchmk'])
+    fundInfo = pd.DataFrame(
+        data=fundInfo,
+        columns=[
+            'Fund_Code',
+            'Date_In',
+            'Date_Out',
+            'Info_Sector',
+            'Bchmk'])
     fundInfo['Date_In'] = pd.to_datetime(fundInfo['Date_In'])
     fundInfo['Date_Out'] = pd.to_datetime(fundInfo['Date_Out'])
 
@@ -32,7 +41,8 @@ def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
         fundInfoMix = fundInfo[fundInfo['Info_Sector'] == '2001010204000000']
         fundInfoMix = attach_stk_label(fundInfoMix)[0]
         fundInfoMix.drop('Stk_Weight', axis=1, inplace=True)
-        fundInfo = pd.concat([fundInfoStk, fundInfoMix], axis=0, ignore_index=True)
+        fundInfo = pd.concat([fundInfoStk, fundInfoMix],
+                             axis=0, ignore_index=True)
     else:
         fundInfo = fundInfoStk.copy()
 
@@ -49,8 +59,8 @@ def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
         fundPosRep = fundPosRep.reset_index(drop=True)
         assert all(daysRep.index == fundPosRep.index)
         fundPosFull = pd.concat([daysRep, fundPosRep], axis=1)
-        resPos = fundPosFull.loc[(fundPosFull['Date'] >= fundPosFull['Date_In']) &
-                                 ((fundPosFull['Date'] <= fundPosFull['Date_Out']) | (pd.isnull(fundPosFull['Date_Out']))), ['Date', 'Fund_Code', 'Info_Sector']]
+        resPos = fundPosFull.loc[(fundPosFull['Date'] >= fundPosFull['Date_In']) & (
+            (fundPosFull['Date'] <= fundPosFull['Date_Out']) | (pd.isnull(fundPosFull['Date_Out']))), ['Date', 'Fund_Code', 'Info_Sector']]
         resPos.reset_index(drop=True, inplace=True)
     else:
         resPos = pd.DataFrame([], columns=['Date', 'Fund_Code'])
