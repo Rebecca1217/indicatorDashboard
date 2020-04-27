@@ -2,7 +2,7 @@
 
 # 获取申万行业和股票代码对照表(SWIndexMembers)
 def get_component_SW(dateFrom, dateTo):
-    from public.getWindData import get_wind_data
+    from public.getDataSQL import get_data_sql
     from public.getTradingDays import get_trading_days
     import pandas as pd
     # 获取全集，如果需要某个单独行业再自行筛选
@@ -13,8 +13,8 @@ def get_component_SW(dateFrom, dateTo):
              '(S_CON_INDATE <= {} and (S_CON_OUTDATE >= {} or S_CON_OUTDATE is null))'.format(dateTo, dateFrom)
     # Note: 为什么这个地方Indate和Outdate都有等于号：纳入是当天的0点就开始，而剔除的话是截止到剔除日期的24:00结束
 
-    swComponent = get_wind_data(exeStr)
-    swComponent = pd.DataFrame(swComponent, columns=['SW_Code', 'Stock_Code', 'In_Date', 'Out_Date'])
+    swComponent = get_data_sql(exeStr, 'wind')
+    swComponent.columns=['SW_Code', 'Stock_Code', 'In_Date', 'Out_Date']
     swComponent['In_Date'] = pd.to_datetime(swComponent['In_Date'])
     swComponent['Out_Date'] = pd.to_datetime(swComponent['Out_Date'])
 

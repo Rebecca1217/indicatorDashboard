@@ -1,7 +1,7 @@
 # -*- coding:UTF-8 -*-
 import pandas as pd
 from public.getTradingDays import get_trading_days
-from public.getWindData import get_wind_data
+from public.getDataSQL import get_data_sql
 from public.attachSTKLabel import attach_stk_label
 
 # @2020.04.12这个函数暂时不调整，因为ChinaMutualFundNAV基金缺失一些日期
@@ -23,15 +23,13 @@ def get_stock_fund_univ(dateFrom, dateTo, ifFlexible):
              'order by F_INFO_WINDCODE, S_INFO_SECTORENTRYDT'.format(dateTo, dateFrom)
     # entrydt is null and exitdt is null and cur_sign =
     # 1这种都是只有个代码但还未成立的，没有其他数据就不用选出来了
-    fundInfo = get_wind_data(sqlStr)
-    fundInfo = pd.DataFrame(
-        data=fundInfo,
-        columns=[
+    fundInfo = get_data_sql(sqlStr, 'wind')
+    fundInfo.columns=[
             'Fund_Code',
             'Date_In',
             'Date_Out',
             'Info_Sector',
-            'Bchmk'])
+            'Bchmk']
     fundInfo['Date_In'] = pd.to_datetime(fundInfo['Date_In'])
     fundInfo['Date_Out'] = pd.to_datetime(fundInfo['Date_Out'])
 

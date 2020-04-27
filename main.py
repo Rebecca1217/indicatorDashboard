@@ -4,7 +4,6 @@
 
 import pandas as pd
 import numpy as np
-from public.getWindData import get_wind_data
 from public.getDataSQL import get_data_sql
 from public.getIndexPos import get_index_pos
 from public.getTradingDays import get_trading_days, get_trading_days2
@@ -23,16 +22,14 @@ sqlStr = 'select TRADE_DT, S_MARSUM_EXCHMARKET, S_MARSUM_TRADINGBALANCE, S_MARSU
          'S_MARSUM_MARGINTRADEBALANCE, S_MARSUM_PURCHWITHBORROWMONEY from ' \
          'AShareMarginTradeSum where TRADE_DT >= {0} and TRADE_DT <= {1}  ' \
          'order by TRADE_DT, S_MARSUM_EXCHMARKET'.format(dateFrom, dateTo)
-marginTD = get_wind_data(sqlStr)  # margin trading data
-marginTD = pd.DataFrame(
-    marginTD,
-    columns=[
+marginTD = get_data_sql(sqlStr, 'wind')  # margin trading data
+marginTD.columns=[
         'Date',
         'Mkt',
         'Buy_Balance',
         'Sell_Balance',
         'Margin_TD_Balance',
-        'Buy'])  # Buy代表融资余额，Sell代表融券余额, Margin_TD_Balance是两融余额
+        'Buy']  # Buy代表融资余额，Sell代表融券余额, Margin_TD_Balance是两融余额
 marginTD['Date'] = pd.to_datetime(marginTD['Date'])
 marginTD[['Buy_Balance',
           'Sell_Balance',
@@ -54,19 +51,17 @@ marginTD.to_hdf(
 sqlStr = 'select TRADE_DT, S_INFO_WINDCODE, right(S_INFO_WINDCODE, 2) as Mkt, S_DQ_AMOUNT * 1000 as Amount from AShareEODPrices where ' \
     'TRADE_DT >= {0} and TRADE_DT <= {1}'.format(datetime.datetime.strftime(pd.to_datetime(dateFrom) - datetime.timedelta(60), '%Y%m%d'),
                                                  dateTo)
-tdAmount = get_wind_data(sqlStr)
-tdAmount = pd.DataFrame(
-    tdAmount,
-    columns=[
+tdAmount = get_data_sql(sqlStr, 'wind')
+tdAmount.columns=[
         'Date',
         'Stock_Code',
         'Mkt',
-        'TD_Amount'])
+        'TD_Amount']
 tdAmount['Date'] = pd.to_datetime(tdAmount['Date'])
 tdAmount['TD_Amount'] = tdAmount['TD_Amount'].astype(float)
 tdAmount.sort_values(['Date', 'Stock_Code'], inplace=True)
 tdAmount.set_index(['Date', 'Stock_Code'], inplace=True)
-tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w')
+tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w', format='table')
 # tdAmount = pd.read_hdf('tdAmount.hdf', key='tdAmount')
 
 mktAmount = pd.DataFrame(tdAmount.groupby(['Date', 'Mkt'])['TD_Amount'].sum())
@@ -120,12 +115,10 @@ marAmountTRatio.to_hdf(
 
 ############################################ 指数总交易量数据 ####################
 # 从AIndexEODPrices读取的指数交易量数据，创业板指实际是创业板综，所以干脆都自己读成分股自己汇总
-tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w', format='table')
+# tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w', format='table') # 保存时间比较久，不是中间测算的话没必要保存
 tdDays60 = get_trading_days(
     datetime.datetime.strftime(
-        pd.to_datetime(dateTo) -
-        datetime.timedelta(160),
-        '%Y%m%d'),
+        pd.to_datetime(dateTo) - datetime.timedelta(160), '%Y%m%d'),
     dateTo)
 dateFrom60 = datetime.datetime.strftime(
     tdDays60.index[len(tdDays60) - 60], '%Y%m%d')
@@ -210,15 +203,13 @@ def get_fund_pos(dateFrom, dateTo, ifFlexible, bchmkCode):
     sqlStr = 'select S_INFO_WINDCODE, F_PRT_ENDDATE, F_PRT_STOCKTONAV, F_PRT_NETASSET, F_PRT_STOCKVALUE from ' \
              'ChinaMutualFundAssetPortfolio where F_PRT_ENDDATE >= {0} and F_PRT_ENDDATE <= {1}' \
              'order by S_INFO_WINDCODE, F_PRT_ENDDATE'.format(dateFrom, dateTo)
-    fundPosition = get_wind_data(sqlStr)
-    fundPosition = pd.DataFrame(
-        fundPosition,
-        columns=[
+    fundPosition = get_data_sql(sqlStr, 'wind')
+    fundPosition.columns=[
             'Fund_Code',
             'Date',
             'Stock_Pos',
             'Fund_Value',
-            'Stk_Value'])
+            'Stk_Value']
     fundPosition['Date'] = pd.to_datetime(fundPosition['Date'])
     fundPosition['Stock_Pos'] = fundPosition['Stock_Pos'].astype(float)
 
@@ -272,15 +263,7 @@ def get_fund_pos(dateFrom, dateTo, ifFlexible, bchmkCode):
     #                  'S_INFO_SECTOR in (\'2001010201000000\', \'2001010101000000\', \'2001010204000000\'))只join s_info_sector的话会导致有重复数据
     # 这里选出来的数据，可能包含了一些中间符合标准，后期退出了的基金，不用担心，因为最后会再join到fundUniv上面
     fundPosDetail = get_data_sql(sqlStr, 'wind')
-    fundPosDetail = pd.DataFrame(
-        fundPosDetail,
-        columns=[
-            'Fund_Code',
-            'Stock_Code',
-            'Date',
-            'Stk_Values',
-            'Stk_Pct',
-            'Fund_Value'])
+    fundPosDetail.columns = ['Fund_Code', 'Stock_Code', 'Date', 'Stk_Values', 'Stk_Pct', 'Fund_Value'];
     fundPosDetail['Date'] = pd.to_datetime(fundPosDetail['Date'])
     fundPosDetail[['Stk_Values', 'Stk_Pct', 'Fund_Value']] = fundPosDetail[
         ['Stk_Values', 'Stk_Pct', 'Fund_Value']].astype(float)
@@ -344,7 +327,7 @@ def get_fund_pos(dateFrom, dateTo, ifFlexible, bchmkCode):
                                       datetime.datetime.strftime(fundPosSector.index.min(), '%Y%m%d'),
                                       datetime.datetime.strftime(fundPosSector.index.max(), '%Y%m%d'))
     bchmkW = get_data_sql(sqlStr, 'wind')
-    bchmkW = pd.DataFrame(bchmkW, columns=['Stock_Code', 'Date', 'Bchmk_W'])
+    bchmkW.columns=['Stock_Code', 'Date', 'Bchmk_W']
     bchmkW['Date'] = pd.to_datetime(bchmkW['Date'])
     bchmkW['Bchmk_W'] = bchmkW['Bchmk_W'].astype(float)
     bchmkW = bchmkW.merge(swComponent, how='left', on=['Date', 'Stock_Code'])
@@ -437,10 +420,8 @@ def get_new_fund_amount(dateFrom, dateTo, ifFlexible):
              'where b.S_INFO_SECTOR in ' \
              '(\'2001010201000000\', \'2001010101000000\', \'2001010204000000\')'
 
-    stkFund = get_wind_data(sqlStr)
-    stkFund = pd.DataFrame(
-        stkFund,
-        columns=['Fund_Code', 'Info_Sector', 'Setup_Date', 'Collection', 'Bchmk'])
+    stkFund = get_data_sql(sqlStr, 'wind')
+    stkFund.columns=['Fund_Code', 'Info_Sector', 'Setup_Date', 'Collection', 'Bchmk']
     stkFund['Setup_Date'] = pd.to_datetime(stkFund['Setup_Date'])
     stkFund['Collection'] = stkFund['Collection'].astype(float)
 
@@ -550,13 +531,11 @@ monthSeq = dateSeq[dateSeq['If_Month_End']].copy()
 sqlStr = 'select S_INFO_WINDCODE, S_IPO_COLLECTION * 10000 as Collection, S_IPO_LISTDATE from AShareIPO ' \
          'where S_IPO_LISTDATE >= {0} ' \
          'order by S_IPO_LISTDATE'.format(dateFrom)
-stkUniv = get_wind_data(sqlStr)
-stkUniv = pd.DataFrame(
-    stkUniv,
-    columns=[
+stkUniv = get_data_sql(sqlStr, 'wind')
+stkUniv.columns=[
         'Stock_Code',
         'Collection',
-        'List_Date'])
+        'List_Date']
 stkUniv['List_Date'] = pd.to_datetime(stkUniv['List_Date'])
 stkUniv['Collection'] = stkUniv['Collection'].astype(float)
 stkUniv['Date'] = stkUniv['List_Date']
@@ -591,12 +570,8 @@ sqlStr = 'select  S_INFO_WINDCODE, TRADE_DT, S_DQ_CLOSE from HKIndexEODPrices ' 
          'where S_INFO_WINDCODE = \'HSAHP.HI\' ' \
          'and TRADE_DT >= {0} and TRADE_DT <= {1} ' \
          'order by TRADE_DT'.format(dateFrom, dateTo)
-dataAH = pd.DataFrame(
-    get_wind_data(sqlStr),
-    columns=[
-        'Index_Code',
-        'Date',
-        'Close'])
+dataAH = get_data_sql(sqlStr, 'wind')
+dataAH.columns=['Index_Code', 'Date', 'Close']
 dataAH['Date'] = pd.to_datetime(dataAH['Date'])
 dataAH['Close'] = dataAH['Close'].astype(float)
 dataAH.set_index('Date', inplace=True)

@@ -2,7 +2,7 @@
 
 #  获取申万一级行业名称、代码对照表
 import pandas as pd
-from public.getWindData import get_wind_data
+from public.getDataSQL import get_data_sql
 import numpy as np
 def basic_info_SW():
 
@@ -10,8 +10,8 @@ def basic_info_SW():
 
 #     exeStr = 'select INDUSTRIESCODE, INDUSTRIESNAME, INDUSTRIESALIAS from dbo.ASHAREINDUSTRIESCODE where  LEVELNUM = 2 and INDUSTRIESCODE like \'61%\' and USED = 1'
     exeStr = 'select INDUSTRIESCODE, INDUSTRIESNAME, INDUSTRIESALIAS, USED from dbo.ASHAREINDUSTRIESCODE where LEVELNUM = 2 and INDUSTRIESCODE like \'61%\''
-    codePara = get_wind_data(exeStr)
-    codePara = pd.DataFrame(data=codePara, columns=['SW_Code', 'SW_Name', 'Wind_Code', 'Used_Label'])
+    codePara = get_data_sql(exeStr, 'wind')
+    codePara.columns=['SW_Code', 'SW_Name', 'Wind_Code', 'Used_Label']
     # codePara['Wind_Code_New'] = pd.Series(codePara['Wind_Code'] + '.SI')
     codePara.sort_values(['Used_Label', 'Wind_Code'], inplace=True)
     codePara.reset_index(drop=True, inplace=True)

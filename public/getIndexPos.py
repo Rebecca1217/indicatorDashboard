@@ -2,14 +2,14 @@
 
 import pandas as pd
 from public.getTradingDays import get_trading_days
-from public.getWindData import get_wind_data
+from public.getDataSQL import get_data_sql
 # 获取指数历史持仓 这个指数不包含行业指数，至少不包含申万行业指数
 def get_index_pos(indexCode, dateFrom, dateTo):
     exeStr = 'select  S_INFO_WINDCODE, S_CON_WINDCODE, S_CON_INDATE, S_CON_OUTDATE, CUR_SIGN ' \
              'from dbo.AINDEXMEMBERS where S_INFO_WINDCODE = \'%s\' and' \
              ' (S_CON_INDATE <= %s and ( S_CON_OUTDATE > %s or S_CON_OUTDATE is null))' % (indexCode, dateTo, dateFrom)
-    indexPos = get_wind_data(exeStr)
-    indexPos = pd.DataFrame(data=indexPos, columns=['Index_Code', 'Stock_Code', 'DateIn', 'DateOut', 'Cur_Label'])
+    indexPos = get_data_sql(exeStr, 'wind')
+    indexPos.columns=['Index_Code', 'Stock_Code', 'DateIn', 'DateOut', 'Cur_Label']
     indexPos['DateIn'] = pd.to_datetime(indexPos['DateIn'])
     indexPos['DateOut'] = pd.to_datetime(indexPos['DateOut'])
 

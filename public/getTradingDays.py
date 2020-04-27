@@ -4,7 +4,7 @@
 # 本函数取的是上交所交易日期
 
 import pandas as pd
-from public.getWindData import get_wind_data
+from public.getDataSQL import get_data_sql
 from datetime import datetime
 
 def get_trading_days(dateFrom, dateTo):
@@ -13,8 +13,8 @@ def get_trading_days(dateFrom, dateTo):
 
     exeStr = 'select TRADE_DAYS from dbo.ASHARECALENDAR where ' \
              'S_INFO_EXCHMARKET = \'SSE\' and TRADE_DAYS >= %s and TRADE_DAYS <= %s' % (dateFrom, dateTo)
-    tradingDays = get_wind_data(exeStr)
-    tradingDays = pd.DataFrame(data=tradingDays, columns=['Date'])
+    tradingDays = get_data_sql(exeStr, 'wind')
+    tradingDays.columns=['Date']
     tradingDays['Date'] = pd.to_datetime(tradingDays['Date'])
     tradingDays = tradingDays.sort_values('Date')  # 等价于tradingDays.sort_value('Date', inplace=True)
     tradingDays.set_index('Date', inplace=True)
@@ -40,8 +40,8 @@ def get_trading_days2(dateFrom, dateTo, dateType):
 
     exeStr = 'select TRADE_DAYS from dbo.ASHARECALENDAR where ' \
              'S_INFO_EXCHMARKET = \'SSE\' and TRADE_DAYS >= %s and TRADE_DAYS <= %s' % (dateFrom1, dateTo1)
-    tradingDays = get_wind_data(exeStr)
-    tradingDays = pd.DataFrame(data=tradingDays, columns=['Date'])
+    tradingDays = get_data_sql(exeStr, 'wind')
+    tradingDays.columns=['Date']
     tradingDays['Date'] = pd.to_datetime(tradingDays['Date'])
     tradingDays.sort_values('Date', inplace=True)
     tradingDays.reset_index(drop=True, inplace=True)
