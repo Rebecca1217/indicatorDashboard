@@ -67,7 +67,7 @@ tdAmount['TD_Amount'] = tdAmount['TD_Amount'].astype(float)
 tdAmount.sort_values(['Date', 'Stock_Code'], inplace=True)
 tdAmount.set_index(['Date', 'Stock_Code'], inplace=True)
 tdAmount.to_hdf('tdAmount.hdf', key='tdAmount', type='w')
-# tdAmount = pd.read_hdf('tdAmount.hdf')
+# tdAmount = pd.read_hdf('tdAmount.hdf', key='tdAmount')
 
 mktAmount = pd.DataFrame(tdAmount.groupby(['Date', 'Mkt'])['TD_Amount'].sum())
 mktAmount.sort_values(['Mkt', 'Date'], inplace=True)

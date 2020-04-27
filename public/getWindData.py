@@ -22,6 +22,6 @@ def get_wind_data2(exeStr):
                'port': '1433',
                'database': 'wind_fsync'
                }
-    wind_engine = create_engine('mysql+pymysql://%(user)s:%(password)s@%(host)s:%(port)s/%(database)s?charset=cp936' % db_info)
+    wind_engine = create_engine('mssql+pymssql://%(user)s:%(password)s@%(host)s:%(port)s/%(database)s?charset=cp936' % db_info)
     dt = pd.read_sql(exeStr, wind_engine)
     return dt

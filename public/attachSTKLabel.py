@@ -3,6 +3,10 @@ import pandas as pd
 import numpy as np
 import re
 from public.getDataSQL import get_data_sql
+import datetime
+from sqlalchemy import create_engine
+
+
 
 # 根据基金的bchmk文字描述，按照50%股票类指数作为分界点，贴偏股类标签（1）和非偏股类标签（0）
 
@@ -37,6 +41,7 @@ def attach_stk_label(inputTable):
         weightI = [0.0 if w == '' else float(w) for w in bchmkI.values()]
         if None not in stkLabelI:
             stkWeightI = sum(np.array(stkLabelI) * np.array(weightI))
+            print('没有需要新添加参数的Bchmk_Name...')
         else:
             # 把None先粗略补齐，再把新指数名称保存下来，便于print到日志检查
             newIndexName = np.array(list(bchmkI.keys()))[
@@ -47,6 +52,16 @@ def attach_stk_label(inputTable):
                 addLabelI = not(
                     '债' in newIndexNameI or '存款' in newIndexNameI or '年化' in newIndexNameI)
                 addLabel.append(addLabelI)
+                # write to sql
+                sqlTable = pd.DataFrame(np.array([newIndexName, addLabel,
+                                                  [datetime.datetime.strftime(datetime.datetime.today(), '%Y-%m-%d')] * len(addLabel)]
+                                                 ).transpose(), columns=['Bchmk_Name', 'If_STK', 'Update_Time'])
+
+                engine = create_engine("mssql+pymssql://lhtz:Cjhx+20140801@10.201.4.164:1433/lhtzdb")
+                conn = engine.connect()
+                sqlTable.to_sql('paraBchmkType', conn, index=False, if_exists='append')
+                conn.close()
+                print('新添加Bchmk_Name:{0} ...'.format(sqlTable))
             addIndex = np.where([x is None for x in stkLabelI])[0]
             newIndex = list(range(len(addLabel)))
             for i, j in zip(addIndex, newIndex):
